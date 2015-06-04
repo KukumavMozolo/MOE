@@ -187,8 +187,6 @@ class InstallCppComponents(install):
         # Build the full cmake command using properly tokenized options
         cmake_full_command = [
             cmake_path,
-            '-DMOE_PYTHON_INCLUDE_DIR=' + moe_python_include_dir,
-            '-DMOE_PYTHON_LIBRARY=' + moe_python_library,
             ]
         cmake_full_command.extend(cmake_options_split)
         cmake_full_command.append(cpp_location)
