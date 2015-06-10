@@ -145,7 +145,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             max_relative_change,
             tolerance,
         )
-        num_multistarts = 10
+        num_multistarts = 1
 
         # Expand the domain so that we are definitely not doing constrained optimization
         expanded_domain = TensorProductDomain([ClosedInterval(-2.0, 2.0), ClosedInterval(0.0, 6.0)])
@@ -158,33 +158,28 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         point = SamplePoint(numpy.array([1, 1]), self.function_to_minimize([1, 1]), 0.05)
 
         data = HistoricalData(2, [point])
-        params = [1, -2,  2, 40]
+        params = [1, -2,  2]
         iters = 80
         # points_sampled = list()
         # function_vals = list()
         # points_sampled.append(1)
         # function_vals.append(self.function_to_minimize(numpy.array([1,0])))
+        theta = self.fit_hyperparameters(data)
+        cov = SquareExponential(theta)
+        gaussian_process = GaussianProcess(cov, data, *params)
         for i in range(iters):
-            theta = self.fit_hyperparameters(data)
-            cov = SquareExponential(theta)
-            gaussian_process = GaussianProcess(cov, data, *params)
             cora_ei_eval = ExpectedImprovement(gaussian_process,  num_mc_iterations=num_mc_iterations)
             ei_optimizer = GradientDescentOptimizer(repeated_domain, cora_ei_eval, gd_parameters)
             best_point = multistart_expected_improvement_optimization(ei_optimizer, num_multistarts, i)
-            print("before" +str(best_point))
             best_point[:,1] = numpy.random.uniform(0.0,6.0,1)
-            print("after" + str(best_point))
-            self.append_evaluation(data, best_point)
-            x = best_point[:,0][0]
-            y =  self.function_to_minimize(numpy.array([best_point[:,0],0]))[0]
+            data = self.append_evaluation(data, best_point)
             points_sampled = data.points_sampled
             function_vals = data.points_sampled_value
-
             theta = self.fit_hyperparameters(data)
+            print(theta)
             cov = SquareExponential(theta)
             gaussian_process = GaussianProcess(cov, data, *params)
-            plot_estimate(i, -2, 2, gaussian_process, points_sampled, function_vals)
-            print(points_sampled)
+            plot_estimate(i, -2, 2, gaussian_process, points_sampled, function_vals, theta)
         assert(False)
 
 
@@ -210,7 +205,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             max_relative_change,
             tolerance,
         )
-        domain = TensorProductDomain([ClosedInterval(1.0, 4.0), ClosedInterval(1.0, 4.0), ClosedInterval(1.0, 4.0)])
+        domain = TensorProductDomain([ClosedInterval(1, 4.0), ClosedInterval(0.5, 4.0), ClosedInterval(0.5, 4.0)])
         hyperOptimizer = GradientDescentOptimizer(domain, lml, gd_parameters)
         best_hyperparameters = multistart_hyperparameter_optimization(hyperOptimizer, 1)
         return best_hyperparameters
@@ -225,7 +220,8 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         :param time:
         :return:
         '''
-        return numpy.exp(-(alpha) ** 2) + 1.0 + numpy.sin(time) #+ numpy.random.normal(0,1)
+        #return numpy.exp(-(alpha) ** 2) + 1.0 +  numpy.sin(time)# + numpy.random.normal(0,1)
+        return numpy.sin(alpha*5)
 
     def append_evaluation(self, points, new_point):
         r"""
@@ -233,6 +229,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         :type points: HistoricalData
         """
         points.append_historical_data(new_point, self.function_to_minimize(new_point[0]), 0.01)
+        return points
 
 def multistart_expected_improvement_optimization(
         ei_optimizer,
@@ -244,20 +241,24 @@ def multistart_expected_improvement_optimization(
     # plot_multistart_starts_values(best_point,random_starts_values, iter)
     return best_point
 
-def plot_estimate(iter,low, high, gaussian_process, points_sampled_inlist, function_vals_inlist):
-    points_sampled = points_sampled_inlist
-    function_vals = function_vals_inlist
+def plot_estimate(iter,low, high, gaussian_process, points_sampled, function_vals, hyperparams):
+
     n = 30
     x = numpy.linspace(low, high, n)
     x_tmp = numpy.zeros((n,2))
     x_tmp[:,0] = x
     y = gaussian_process.compute_mean_of_points(x_tmp)
     var = gaussian_process.compute_variance_of_points(x_tmp)
-    var = var[numpy.diag_indices(n)]
+    var = var[numpy.diag_indices(n)] #* 1.0/6.0
     low = y - var
     high = y + var
     plt.figure()
     plt.plot(x,y)
     plt.fill_between(x,low,high, color='gray')
-    plt.scatter(points_sampled[:,0], function_vals)
+    plt.scatter(points_sampled[:-1,0], function_vals[:-1])
+    plt.scatter(points_sampled[-1,0], function_vals[-1], color = 'red')
+    plt.plot(x, var, color='red')
+    plt.ylim((-7,7))
+    plt.title("$Hyperparams:$" +" "+"$\sigma_f= $" + "$"+'%.2f' % hyperparams[0] +"$"+ " $,l_1=$"+ "$" +'%.2f' % hyperparams[1] + "$"+ " $,l_2=$" + "$"+'%.2f' % hyperparams[2]+ "$")
     plt.savefig('/home/maxweule/Documents/Thesis/plots/' + str(iter) + '.png')
+    plt.close()

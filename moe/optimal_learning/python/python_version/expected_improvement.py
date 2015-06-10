@@ -832,6 +832,7 @@ class ExpectedImprovement(ExpectedImprovementInterface, OptimizableInterface):
         :rtype: array of float64 with shape (num_to_sample, dim)
 
         """
+        force_monte_carlo=True
         num_points = self.num_to_sample + self.num_being_sampled
         union_of_points = numpy.reshape(numpy.append(self._points_to_sample, self._points_being_sampled), (num_points, self.dim))
 
