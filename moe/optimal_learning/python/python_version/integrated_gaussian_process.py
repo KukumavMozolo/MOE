@@ -147,7 +147,6 @@ class GaussianProcess(GaussianProcessInterface):
                 for j in range(covariance_matrix.shape[0]):
                      self._K_C[i,j] = C[i,j] * self._K_Inv[i,j]
 
-            self._K_C_chol = scipy.linalg.cho_factor(self._K_C, lower=True, overwrite_a=True)
             self._K_chol = scipy.linalg.cho_factor(covariance_matrix, lower=True, overwrite_a=True)
             self._K_inv_y = scipy.linalg.cho_solve(self._K_chol, self._points_sampled_value)
 
@@ -232,7 +231,7 @@ class GaussianProcess(GaussianProcessInterface):
 
         # y_{k,i} = A_{k,j,i} * x_j
         grad_mu_star = numpy.einsum('ijk, j', grad_K_star, self._K_inv_y)
-        return grad_mu_star
+        return grad_mu_star * 1.0/(self.high - self.low)
 
     def _compute_integrated_grad_covariance(self, point_one, point_two):
         r"""gradient = cov(x_{*i}^',x_j^')*\frac{1}{L} * ( x_j - x_*) * \sqrt(pi/2) * (erf(\frac{b-x_{jn}}{\sqrt(2)L}) - erf(\frac{a-x_{jn}}{\sqrt(2)L}))
@@ -252,7 +251,7 @@ class GaussianProcess(GaussianProcessInterface):
         low_bound = erf(low_bound)
         diff = high_bound - low_bound
         grad_cov = grad_cov * diff
-        grad_cov[-1] = 0 #gradient for marginal is zero
+        grad_cov[-1] = 0.0 #gradient for marginal is zero
         return grad_cov
 
     def _compute_integrated_grad_covariance2(self, point_one, point_two):
@@ -265,6 +264,17 @@ class GaussianProcess(GaussianProcessInterface):
         lower_bound = (self.low - point_one[-1])/normalisation
         lower_bound = erf(lower_bound)
         diff *= (higher_bound - lower_bound)
+        return diff
+
+    def _compute_integrated_grad_covariance3(self, point_one, point_two):
+        _hyperparameters = self._covariance.get_hyperparameters()
+        l = numpy.copy(_hyperparameters[-1]) # is it the last??
+        covariance = SquareExponential(_hyperparameters[:-1])
+        diff = point_one - point_two
+        diff[-1]=0
+        tmp_point_one = point_one[:-1]
+        tmp_point_two = point_two[:-1]
+        diff*= covariance.covariance(tmp_point_one,tmp_point_two)
         return diff
 
     def _build_integrated_covariance_maxtrix2(self, covariance, points_sampled, points_to_sample):
@@ -300,7 +310,19 @@ class GaussianProcess(GaussianProcessInterface):
         sigma_f_sq =sigma_f * sigma_f
         l = numpy.copy(_hyperparameters[-1]) # is it the last??
 
-        var_star = sigma_f_sq * (self.high - self.low)
+        covariance = SquareExponential(_hyperparameters[:-1])
+        var_star = numpy.empty((points_to_sample.shape[0],points_to_sample.shape[0]))
+        norm1 = 2*l*(numpy.sqrt(numpy.pi/2.0))
+        norm2 = numpy.sqrt(2.0) * l
+        norm3 = numpy.sqrt(2.0/numpy.pi)
+        diff = (self.high-self.low)
+        const = norm1* (diff * erf(diff/norm2) + norm3 * (numpy.exp(-diff**2/(2.0*l**2))))
+        for i, point_one in enumerate(points_to_sample):
+            for j, point_two in enumerate(points_to_sample):
+                tmp_point_one = point_one[:-1]
+                tmp_point_two = point_two[:-1]
+                var_star[i,j] = covariance.covariance(tmp_point_one, tmp_point_two) * const
+
         K_star = self._build_integrated_covariance_maxtrix2(
             self._covariance,
             self._points_sampled,
@@ -316,7 +338,7 @@ class GaussianProcess(GaussianProcessInterface):
         #     overwrite_b=True,
         # )
 
-        normalization = l * numpy.sqrt(numpy.pi)/2.0 #* 1.0 /self._points_sampled.shape[0]
+        normalization = l**2 * numpy.pi/2.0 #* 1.0 /self._points_sampled.shape[0]
 
         # cheaper to go through scipy.linalg.get_blas_funcs() which can compute A = alpha*B*C + beta*A in one pass
         # vtv_norm = numpy.dot(V.T, V) * normalization
@@ -328,16 +350,13 @@ class GaussianProcess(GaussianProcessInterface):
     def _build_integrated_term_maxtrix(self, covariance, points_sampled):
         _hyperparameters = covariance.get_hyperparameters()
         l = numpy.copy(_hyperparameters[-1]) # is it the last??
-        c = numpy.empty((points_sampled.shape[0], points_sampled.shape[0]), order='F')
+        diffs = numpy.empty((1, points_sampled.shape[0]), order='F')
+        norm = numpy.sqrt(2.0) * l
         for i, point_one in enumerate(points_sampled):
-            for j, point_two in enumerate(points_sampled):
-                higher_bound = erf((-2*self.high + point_one[self.idx] + point_two[self.idx])/(2*l))
-                lower_bound = erf((-2*self.low + point_one[self.idx] + point_two[self.idx])/(2*l))
-                diff = (lower_bound - higher_bound)
-                diff_exp =-1*(point_one[self.idx] - point_two[self.idx])**2
-                exp_tmp = numpy.exp(diff_exp/(4*l**2))
-                c[i, j] = exp_tmp * diff
-        return c
+            high_bound = erf((self.high - point_one[-1])/(norm))
+            low_bound = erf((self.low - point_one[-1])/(norm))
+            diffs[0,i] = high_bound - low_bound
+        return numpy.dot(diffs.T,diffs)
 
     def compute_variance_of_points(self, points_to_sample):
         return self._compute_variance_of_points(points_to_sample)
@@ -395,23 +414,41 @@ class GaussianProcess(GaussianProcessInterface):
 
         _hyperparameters = self._covariance.get_hyperparameters()
         l = numpy.copy(_hyperparameters[-1]) # is it the last??
-        normlisation = numpy.pi * numpy.sqrt(numpy.pi)/4*l
+        covariance = SquareExponential(_hyperparameters[:-1])
+        norm = numpy.pi /2.0
         K_inv_times_K_star = numpy.dot(self._K_C, K_star)
         for i, point_one in enumerate(points_to_sample):
             for j, point_two in enumerate(points_to_sample):
                 if var_of_grad == i and var_of_grad == j:
-                    grad_var[i, j, ...] = 0 #the K_star_start part
-                    for idx_two, sampled_two in enumerate(self._points_sampled):
-                        grad_var[i, j, ...] -= 2.0 * K_inv_times_K_star[idx_two, i] * self._compute_integrated_grad_covariance2(sampled_two, point_one) * normlisation
+                    tmp_point_one = point_one[:-1]
+                    tmp_point_two = point_two[:-1]
+                    grad_var[i, j, ...] = covariance.covariance(tmp_point_one, tmp_point_two) * self.grad_var(point_one, point_two, l, -1)  #the K_star_start part
+                    for q, sampled_two in enumerate(self._points_sampled):
+                        for p, sampled_one in enumerate(self._points_sampled):
+                            tmp_sampled_two = sampled_two[:-1]
+                            tmp_sampled_one = sampled_one[:-1]
+                            grad_var[i, j, ...] -=  K_inv_times_K_star[q, i] * (sampled_two - point_one) * covariance.covariance(tmp_point_one, tmp_sampled_one) * norm
+                            grad_var[i, j, ...] -=  K_inv_times_K_star[p, i] * (sampled_one - point_one) * covariance.covariance(tmp_point_one, tmp_sampled_two) * norm
+                            grad_var[i,j,-1] = 0
                 elif var_of_grad == i:
-                    grad_var[i, j, ...] = 0
+                    grad_var[i, j, ...] = covariance.covariance(tmp_point_one, tmp_point_two) * self.grad_var(point_one, point_two, l, -1)
                     for idx_two, sampled_two in enumerate(self._points_sampled):
-                        grad_var[i, j, ...] -= K_inv_times_K_star[idx_two, j] * self._compute_integrated_grad_covariance2(sampled_two, point_one) * normlisation
+                        grad_var[i, j, ...] -= K_inv_times_K_star[idx_two, j] * self._compute_integrated_grad_covariance2(sampled_two, point_one) * norm
                 elif var_of_grad == j:
-                    grad_var[i, j, ...] = 0
+                    grad_var[i, j, ...] = covariance.covariance(tmp_point_two, tmp_point_one) * self.grad_var(point_two, point_one,l, -1)
                     for idx_one, sampled_one in enumerate(self._points_sampled):
-                        grad_var[i, j, ...] -= K_inv_times_K_star[idx_one, i] * self._compute_integrated_grad_covariance2(sampled_two, point_two) * normlisation
-        return grad_var
+                        grad_var[i, j, ...] -= K_inv_times_K_star[idx_one, i] * self._compute_integrated_grad_covariance2(sampled_two, point_two) * norm
+        return grad_var  * 1.0/(self.high - self.low)
+
+    def grad_var(self, point_one, point_two, l, idx):
+        diff_points = point_two - point_one
+        diff_points[idx] = 0
+        norm = 2.0  *numpy.sqrt(numpy.pi/2.0) /l
+        norm2 = numpy.sqrt(2.0) * l
+        norm3 = numpy.sqrt(2.0/numpy.pi) * l
+        norm4 = 2.0 * l**2
+        diff_bounds = self.high - self.low
+        return diff_points * norm  * (diff_bounds * erf(diff_bounds/norm2) + norm3 * (numpy.exp(-diff_bounds**2/norm4) - 1))
 
     def compute_grad_variance_of_points(self, points_to_sample, num_derivatives=-1):
         r"""Compute the gradient of the variance (matrix) of this GP at each point of ``Xs`` (``points_to_sample``) wrt ``Xs``.
