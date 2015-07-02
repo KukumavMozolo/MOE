@@ -315,7 +315,7 @@ class GaussianProcess(GaussianProcessInterface):
         var_star = numpy.empty((points_to_sample.shape[0],points_to_sample.shape[0]))
         norm1 = 2*l*(numpy.sqrt(numpy.pi/2.0))
         norm2 = numpy.sqrt(2.0) * l
-        norm3 = numpy.sqrt(2.0/numpy.pi)
+        norm3 = numpy.sqrt(2.0/numpy.pi) *l
         diff = (self.high-self.low)
         const = norm1* (diff * erf(diff/norm2) + norm3 * (numpy.exp(-diff**2/(2.0*l**2))))
         for i, point_one in enumerate(points_to_sample):
@@ -339,13 +339,12 @@ class GaussianProcess(GaussianProcessInterface):
         #     overwrite_b=True,
         # )
 
-        normalization = l**2 * numpy.pi/2.0 #* 1.0 /self._points_sampled.shape[0]
+        normalization = l**2 * numpy.pi/2.0
 
         # cheaper to go through scipy.linalg.get_blas_funcs() which can compute A = alpha*B*C + beta*A in one pass
         # vtv_norm = numpy.dot(V.T, V) * normalization
         # tmp = var_star - vtv_norm
         tmp = var_star - K_star_K_C_Inv_K_star * normalization
-        tmp = tmp
         return tmp * 1.0/(self.high - self.low)
 
     def _build_integrated_term_maxtrix(self, covariance, points_sampled):
@@ -449,7 +448,7 @@ class GaussianProcess(GaussianProcessInterface):
         _hyperparameters = self._covariance.get_hyperparameters()
         l = numpy.copy(_hyperparameters[-1]) # is it the last??
         covariance = SquareExponential(_hyperparameters[:-1])
-        norm = numpy.pi /2.0
+        norm =numpy.pi /2.0
 
         for i, point_one in enumerate(points_to_sample):
             for j, point_two in enumerate(points_to_sample):
@@ -461,13 +460,7 @@ class GaussianProcess(GaussianProcessInterface):
                         for p, x_p in enumerate(self._points_sampled):
                             tmp_x_q = x_q[:-1]
                             tmp_x_p = x_p[:-1]
-                            # a = norm
-                            # b = norm * self._K_C[q, p]
-                            # c = norm * self._K_C[q, p] * covariance.covariance(tmp_point_one, tmp_x_q)
-                            # d = norm * self._K_C[q, p] * covariance.covariance(tmp_point_one, tmp_x_q) * (x_q - point_one)
-                            # e = norm * self._K_C[q, p] * covariance.covariance(tmp_point_one, tmp_x_q) * (x_q - point_one) * covariance.covariance(tmp_point_one, x_p)
-                            grad_var[i, j, ...] -= norm * self._K_C[q, p] * covariance.covariance(tmp_point_one, tmp_x_q) * (x_q - point_one) * covariance.covariance(tmp_point_one, x_p)
-                            grad_var[i, j, ...] -= norm * self._K_C[q, p] * covariance.covariance(tmp_point_one, tmp_x_p) * (x_p - point_one) * covariance.covariance(tmp_point_one, x_q)
+                            grad_var[i, j, ...] -= norm * self._K_C[q, p] * covariance.covariance(tmp_point_one, tmp_x_p) * covariance.covariance(tmp_point_one, tmp_x_q) * (x_p + x_q - 2*point_one)
                             grad_var[i,j,-1] = 0
         return grad_var
 
