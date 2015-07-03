@@ -12,7 +12,7 @@ from moe.optimal_learning.python.python_version.expected_improvement import  Exp
 from moe.optimal_learning.python.python_version.covariance import SquareExponential
 from moe.optimal_learning.python.python_version.domain import TensorProductDomain
 from moe.optimal_learning.python.python_version.optimization import GradientDescentParameters, GradientDescentOptimizer, \
-    multistart_optimize
+    multistart_optimize, LBFGSBOptimizer, LBFGSBParameters
 from moe.optimal_learning.python.repeated_domain import RepeatedDomain
 from moe.tests.optimal_learning.python.gaussian_process_test_case import GaussianProcessTestCase
 from moe.optimal_learning.python.python_version.log_likelihood import GaussianProcessLogMarginalLikelihood, multistart_hyperparameter_optimization
@@ -129,13 +129,13 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         """Check that multistart optimization (gradient descent) can find the optimum point to sample (using 2-EI)."""
         numpy.random.seed(7858)  # TODO(271): Monte Carlo only works for this seed
 
-        max_num_steps = 3000  # this is *too few* steps; we configure it this way so the test will run quickly
+        max_num_steps = 2000  # this is *too few* steps; we configure it this way so the test will run quickly
         max_num_restarts = 10
         num_steps_averaged = 0
-        gamma = 0.01
+        gamma = 0.5
         pre_mult = 1.5
         max_relative_change = 1.0
-        tolerance = 3.0e-2  # really large tolerance b/c converging with monte-carlo (esp in Python) is expensive
+        tolerance = 3.0e-5  # really large tolerance b/c converging with monte-carlo (esp in Python) is expensive
         gd_parameters = GradientDescentParameters(
             max_num_steps,
             max_num_restarts,
@@ -145,7 +145,21 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             max_relative_change,
             tolerance,
         )
-        num_multistarts = 50
+        approx_grad = False
+        max_func_evals = 15000
+        max_metric_correc = 10
+        pgtol = 1.0e-5
+        epsilon = 1.0e-8
+
+        lbfgs_parameters = LBFGSBParameters(
+            approx_grad,
+            max_func_evals,
+            max_metric_correc,
+            tolerance,
+            pgtol,
+            epsilon
+        )
+        num_multistarts = 6
 
         high = 6
         low = 0
@@ -165,7 +179,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
 
         data = HistoricalData(2, [point,point2,point3,point4])
         params = [1, low,  high]
-        iters = 80
+        iters = 200
         # points_sampled = list()
         # function_vals = list()
         # points_sampled.append(1)
@@ -177,8 +191,8 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         for i in range(iters):
             #find new point to sample
             cora_ei_eval = ExpectedImprovement(gaussian_process,  num_mc_iterations=num_mc_iterations)
-            ei_optimizer = GradientDescentOptimizer(repeated_domain, cora_ei_eval, gd_parameters)
-            best_point = multistart_expected_improvement_optimization(ei_optimizer, num_multistarts, i)
+            ei_optimizer = LBFGSBOptimizer(repeated_domain, cora_ei_eval, lbfgs_parameters)
+            best_point, function_argument_list, starts = multistart_expected_improvement_optimization(ei_optimizer, num_multistarts, i)
             best_point[:,1] = numpy.random.uniform(low,high,1)#random time corresponds to rl testcase
             #evaluate point
             data = self.append_evaluation(data, best_point)
@@ -189,7 +203,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             #plot
             points_sampled = data.points_sampled
             function_vals = data.points_sampled_value
-            plot_estimate(i, -2, 2, gaussian_process, cora_ei_eval, points_sampled, function_vals, theta)
+            plot_estimate(i, -2, 2, gaussian_process, cora_ei_eval, points_sampled, function_vals, theta, function_argument_list, starts)
         assert(False)
 
 
@@ -215,7 +229,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             max_relative_change,
             tolerance,
         )
-        domain = TensorProductDomain([ClosedInterval(0.1, 4), ClosedInterval(0.1, 2), ClosedInterval(0.1, 4)])
+        domain = TensorProductDomain([ClosedInterval(0.2, 5.), ClosedInterval(0.2, 5.), ClosedInterval(0.2, 5.)])
         hyperOptimizer = GradientDescentOptimizer(domain, lml, gd_parameters)
         best_hyperparameters = multistart_hyperparameter_optimization(hyperOptimizer, 1)
         return best_hyperparameters
@@ -234,6 +248,8 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         return numpy.sin(alpha*5) + numpy.exp(-(time)**2) + 1.0 + numpy.random.normal(0,1)
         #return numpy.exp(-(alpha - numpy.sin(time/2)) ** 2) + numpy.sin(time)
 
+
+
     def append_evaluation(self, points, new_point):
         r"""
         :param points: HistoricalData
@@ -249,15 +265,17 @@ def multistart_expected_improvement_optimization(
 ):
     random_starts = ei_optimizer.domain.generate_uniform_random_points_in_domain(num_points=num_multistarts)
     x_tmp = numpy.zeros((num_multistarts,2))
-    x = numpy.linspace(-2, 2, num_multistarts)
+    x = numpy.linspace(-1.95, 1.95, num_multistarts)
     x_tmp[:,0] = x
-    best_point, random_starts_values = multistart_optimize(ei_optimizer, starting_points=x_tmp)
+    best_point, random_starts_values, function_argument_list = multistart_optimize(ei_optimizer, starting_points=x_tmp)
+    print(function_argument_list)
     # plot_multistart_starts_values(best_point,random_starts_values, iter)
-    return best_point
+    return best_point, function_argument_list, x_tmp[:,0]
 
-def plot_estimate(iter,low, high, gaussian_process, expected_improvement, points_sampled, function_vals, hyperparams):
+def plot_estimate(iter,low, high, gaussian_process, expected_improvement, points_sampled, function_vals, hyperparams, function_argument_list, starts):
     fig = plt.figure()
-    ax1 = fig.add_subplot(2,1,1)
+    fig.subplots_adjust(hspace=.5)
+    ax1 = fig.add_subplot(3,1,1)
     n = 60
     x = numpy.linspace(low, high, n)
     x_tmp = numpy.zeros((n,2))
@@ -275,8 +293,17 @@ def plot_estimate(iter,low, high, gaussian_process, expected_improvement, points
     ep = expected_improvement.evaluate_at_point_list(x_tmp)
     plt.ylim((-5,5))
     plt.xlim((-2,2))
-    ax2 = fig.add_subplot(2,1,2)
+    ax2 = fig.add_subplot(3,1,2)
     ax2.plot(x, ep, color = 'black')
+    function_x = function_argument_list[:,0]
+    function_y = numpy.zeros_like(function_argument_list)[:,0]
+    colors = numpy.random.rand(function_x.shape[0])
+    ax2.scatter(function_x,function_y, c = colors )
+    ax2.scatter(starts, function_y, c = colors, alpha = 0.3)
+    plt.xlim((-2,2))
+    ax3 = fig.add_subplot(3,1,3)
+    plt.xlim((-2,2))
+    ax3.plot(x, -1*(numpy.sin(x*5) + 1. +numpy.exp(-(0.6)**2)))
     plt.title("$Hyperparams:$" +" "+"$\sigma_f= $" + "$"+'%.2f' % hyperparams[0] +"$"+ " $,l_1=$"+ "$" +'%.2f' % hyperparams[1] + "$"+ " $,l_2=$" + "$"+'%.2f' % hyperparams[2]+ "$")
     plt.savefig('/home/maxweule/Documents/Thesis/plots/' + str(iter) + '.png')
     plt.close()
