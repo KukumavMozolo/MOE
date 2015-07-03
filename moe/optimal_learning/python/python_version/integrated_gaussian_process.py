@@ -317,7 +317,7 @@ class GaussianProcess(GaussianProcessInterface):
         norm2 = numpy.sqrt(2.0) * l
         norm3 = numpy.sqrt(2.0/numpy.pi) *l
         diff = (self.high-self.low)
-        const = norm1* (diff * erf(diff/norm2) + norm3 * (numpy.exp(-diff**2/(2.0*l**2)) -1))
+        const = norm1* (diff * erf(diff/norm2) + norm3 * (numpy.exp(-diff**2/(2.0*l**2)) -1.0))
         for i, point_one in enumerate(points_to_sample):
             for j, point_two in enumerate(points_to_sample):
                 tmp_point_one = point_one[:-1]
