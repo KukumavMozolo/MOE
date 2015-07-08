@@ -588,18 +588,20 @@ class MultistartOptimizer(OptimizerInterface):
         best_function_value = -numpy.inf
         best_point = random_starts[0, ...]  # any point will do
         function_value_list = numpy.empty(random_starts.shape[0])
+        function_argument_list = numpy.empty(random_starts.shape)
 
         for i, point in enumerate(random_starts):
             self.optimizer.objective_function.current_point = point
             self.optimizer.optimize(**kwargs)
             function_value = self.optimizer.objective_function.compute_objective_function(**kwargs)
             function_value_list[i] = function_value
+            function_argument_list[i,:] = self.optimizer.objective_function.current_point
 
             if function_value > best_function_value:
                 best_function_value = function_value
                 best_point = self.optimizer.objective_function.current_point
 
-        return best_point, function_value_list
+        return best_point, function_value_list, function_argument_list
 
 
 class _ScipyOptimizerWrapper(OptimizerInterface):

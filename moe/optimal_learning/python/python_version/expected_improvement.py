@@ -262,7 +262,7 @@ class ExpectedImprovement(ExpectedImprovementInterface, OptimizableInterface):
 
         """
         null_optimizer = NullOptimizer(None, self)
-        _, values = multistart_optimize(null_optimizer, starting_points=points_to_evaluate)
+        _, values, _ = multistart_optimize(null_optimizer, starting_points=points_to_evaluate)
 
         # TODO(GH-59): Have multistart actually indicate whether updates were found.
         found_flag = True

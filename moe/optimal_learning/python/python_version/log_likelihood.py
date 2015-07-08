@@ -109,7 +109,7 @@ def multistart_hyperparameter_optimization(
     random_starts = domain_log10.generate_uniform_random_points_in_domain(num_points=num_multistarts)
     random_starts = numpy.power(10.0, random_starts)
 
-    best_hyperparameters, _ = multistart_optimize(hyperparameter_optimizer, starting_points=random_starts)
+    best_hyperparameters, _ , _ = multistart_optimize(hyperparameter_optimizer, starting_points=random_starts)
 
     # TODO(GH-59): Have GD actually indicate whether updates were found, e.g., in an IOContainer-like structure.
     found_flag = True
