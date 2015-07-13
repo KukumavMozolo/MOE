@@ -3,6 +3,7 @@
 from moe.bandit.data_containers import HistoricalData as BanditHistoricalData
 from moe.bandit.data_containers import SampleArm
 from moe.optimal_learning.python.cpp_wrappers.gaussian_process import GaussianProcess
+from moe.optimal_learning.python.python_version.integrated_gaussian_process import IntegratedGaussianProcess
 from moe.optimal_learning.python.data_containers import SamplePoint, HistoricalData
 from moe.optimal_learning.python.geometry_utils import ClosedInterval
 from moe.optimal_learning.python.linkers import DOMAIN_TYPES_TO_DOMAIN_LINKS, COVARIANCE_TYPES_TO_CLASSES, OPTIMIZER_TYPES_TO_OPTIMIZER_METHODS
@@ -48,6 +49,31 @@ def _make_covariance_of_process_from_params(params):
     """
     covariance_info = params.get("covariance_info")
     covariance_class = COVARIANCE_TYPES_TO_CLASSES[covariance_info.get('covariance_type')].cpp_covariance_class
+
+    hyperparameters = covariance_info.get('hyperparameters')
+    if hyperparameters is None:
+        domain_info = params.get("domain_info")
+        hyperparameters = covariance_class.make_default_hyperparameters(dim=domain_info.get('dim'))
+
+    covariance_of_process = covariance_class(hyperparameters)
+    return covariance_of_process
+
+def _make_covariance_of_process_from_params_python(params):
+    """Create and return a C++ backed covariance_of_process from the request params as a dict.
+
+    ``params`` has the following form::
+
+        params = {
+            'covariance_info': <instance of :class:`moe.views.schemas.base_schemas.CovarianceInfo`>,
+            ...
+            }
+
+    :param params: The request params dict
+    :type params: dict
+
+    """
+    covariance_info = params.get("covariance_info")
+    covariance_class = COVARIANCE_TYPES_TO_CLASSES[covariance_info.get('covariance_type')].python_covariance_class
 
     hyperparameters = covariance_info.get('hyperparameters')
     if hyperparameters is None:
@@ -111,6 +137,7 @@ def _make_gp_from_params(params):
     gp_historical_info = params.get("gp_historical_info")
     domain_info = params.get("domain_info")
     points_sampled = gp_historical_info.get('points_sampled')
+    integrate = params.get('gp_integral_info')
 
     covariance_of_process = _make_covariance_of_process_from_params(params)
 
@@ -124,12 +151,26 @@ def _make_gp_from_params(params):
             )
         )
 
-    gaussian_process = GaussianProcess(
+    if(integrate):
+        marginal_idx = integrate.get("marginal_idx")
+        low_bound = integrate.get("lower_bound")
+        high_bound = integrate.get("upper_bound")
+        covariance_of_process = _make_covariance_of_process_from_params_python(params)
+        gaussian_process = IntegratedGaussianProcess(
             covariance_of_process,
             HistoricalData(domain_info.get('dim'), sample_point_list),
+            marginal_idx,
+            low_bound,
+            high_bound,
             )
+        return gaussian_process
+    else:
+        gaussian_process = GaussianProcess(
+                covariance_of_process,
+                HistoricalData(domain_info.get('dim'), sample_point_list),
+                )
 
-    return gaussian_process
+        return gaussian_process
 
 
 def _make_bandit_historical_info_from_params(params, arm_type=SampleArm):

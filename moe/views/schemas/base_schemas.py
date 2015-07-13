@@ -324,7 +324,7 @@ class CovarianceInfo(StrictMappingSchema):
     """
 
     covariance_type = colander.SchemaNode(
-            colander.String(),
+            colander.Int(),
             validator=colander.OneOf(COVARIANCE_TYPES),
             missing=SQUARE_EXPONENTIAL_COVARIANCE_TYPE,
             )
@@ -361,6 +361,25 @@ class GpHistoricalInfo(StrictMappingSchema):
     """
 
     points_sampled = PointsSampled()
+
+class GpIntegralInfo(StrictMappingSchema):
+    """ Gp integrall info required to marginalize out one feature where it is assumed that the prior over the
+    feature is univariate distributed
+    :ivar integral_idx: The index of the dimension that should be marginalized
+    :ivar low_bound: the lower bound on the integrall over the value range of the feature
+    :ivar upper_bound: the upper bound on the integrall over the value range of the feature
+    """
+    marginal_idx = colander.SchemaNode(
+            colander.Int(),
+            )
+    lower_bound = colander.SchemaNode(
+        colander.Float(),
+    )
+    upper_bound = colander.SchemaNode(
+        colander.Float(),
+    )
+    if upper_bound < lower_bound:
+        raise colander.Invalid(None, msg='Lower bound not smaller than upper bound')
 
 
 class ListOfPointsInDomain(colander.SequenceSchema):
