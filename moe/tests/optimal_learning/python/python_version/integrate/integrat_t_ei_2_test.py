@@ -5,7 +5,7 @@ import numpy
 import pytest
 import matplotlib.pyplot as plt
 
-from moe.optimal_learning.python.python_version.integrated_gaussian_process import GaussianProcess
+from moe.optimal_learning.python.python_version.integrated_gaussian_process import IntegratedGaussianProcess
 from moe.optimal_learning.python.data_containers import HistoricalData, SamplePoint
 from moe.optimal_learning.python.geometry_utils import ClosedInterval
 from moe.optimal_learning.python.python_version.expected_improvement import  ExpectedImprovement
@@ -187,7 +187,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         #theta = [3.56,0.8,1.35]
         theta = self.fit_hyperparameters(data)
         cov = SquareExponential(theta)
-        gaussian_process = GaussianProcess(cov, data, *params)
+        gaussian_process = IntegratedGaussianProcess(cov, data, *params)
         for i in range(iters):
             #find new point to sample
             cora_ei_eval = ExpectedImprovement(gaussian_process,  num_mc_iterations=num_mc_iterations)
@@ -199,7 +199,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             #fit new gaussian process to data
             theta = self.fit_hyperparameters(data)
             cov = SquareExponential(theta)
-            gaussian_process = GaussianProcess(cov, data, *params)
+            gaussian_process = IntegratedGaussianProcess(cov, data, *params)
             #plot
             points_sampled = data.points_sampled
             function_vals = data.points_sampled_value
