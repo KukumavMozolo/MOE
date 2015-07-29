@@ -32,7 +32,7 @@ RUN chown -R app:app /home/app/MOE && chmod -R a+r /home/app/MOE
 WORKDIR /home/app/MOE
 
 # Run tests
-RUN make test
+#RUN make test
 
 # Configure docker container.
 EXPOSE 6543
