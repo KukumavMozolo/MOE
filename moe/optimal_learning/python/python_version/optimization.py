@@ -731,15 +731,15 @@ class LBFGSBOptimizer(_ScipyOptimizerWrapper):
         domain_bounding_box = self.domain.get_bounding_box()
         domain_list = [(interval.min, interval.max) for interval in domain_bounding_box]
         domain_numpy = numpy.array(domain_list * self._num_points)
-
-        # Parameters defined above in :class:`~moe.optimal_learning.python.python_version.optimization.LBFGSBParameters` class.
-        return scipy.optimize.fmin_l_bfgs_b(
+        res = scipy.optimize.fmin_l_bfgs_b(
             func=self._scipy_decorator(self.objective_function.compute_objective_function, **kwargs),
             x0=self.objective_function.current_point.flatten(),
             bounds=domain_numpy,
             fprime=self._scipy_decorator(self.objective_function.compute_grad_objective_function, **kwargs),
             **self.optimization_parameters.scipy_kwargs()
-        )[0]
+        )
+        # Parameters defined above in :class:`~moe.optimal_learning.python.python_version.optimization.LBFGSBParameters` class.
+        return res[0]
 
 
 class COBYLAOptimizer(_ScipyOptimizerWrapper):
@@ -774,6 +774,8 @@ class COBYLAOptimizer(_ScipyOptimizerWrapper):
             func=self._scipy_decorator(self.objective_function.compute_objective_function, **kwargs),
             x0=self.objective_function.current_point.flatten(),
             cons=self.domain.get_constraint_list(),
-            disp=0,  # Suppresses output from the routine.
+            disp=None,  # Suppresses output from the routine.
+            iprint=0,
             **self.optimization_parameters.scipy_kwargs()
+
         )
