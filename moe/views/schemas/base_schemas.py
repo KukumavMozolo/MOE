@@ -324,7 +324,7 @@ class CovarianceInfo(StrictMappingSchema):
     """
 
     covariance_type = colander.SchemaNode(
-            colander.Int(),
+            colander.String(),
             validator=colander.OneOf(COVARIANCE_TYPES),
             missing=SQUARE_EXPONENTIAL_COVARIANCE_TYPE,
             )
