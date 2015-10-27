@@ -31,6 +31,10 @@ RUN cp -r /home/app/MOE/moe/build $(python -c "import site; print(site.getsitepa
 RUN chown -R app:app /home/app/MOE && chmod -R a+r /home/app/MOE
 WORKDIR /home/app/MOE
 
+#set time zone
+RUN sudo echo "Europe/Amsterdam" > /etc/timezone
+RUN sudo dpkg-reconfigure -f noninteractive tzdata
+
 # Run tests
 #RUN make test
 
