@@ -11,7 +11,7 @@ Next Points GP REST routes:
     * epi - compute the next points to sample using Expected Parallel Improvement
     * kriging - compute the next points to sample using Kriging Believer
     * constant_liar - compute the next points to sample using Constant Liar
-    * iepi - compute the next points to sample using Integrated Expected Parallel Improvement
+    * iepi - compute the next points to sample using Integrated gaussian process
 
 New routes have the form:
 

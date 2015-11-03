@@ -172,7 +172,9 @@ class GpNextPointsRequest(base_schemas.StrictMappingSchema):
     mvndst_parameters = base_schemas.MVNDSTParametersSchema(
             missing=base_schemas.MVNDSTParametersSchema().deserialize({}),
             )
-    gp_integral_info = base_schemas.GpIntegralInfo()
+    gp_integral_info = base_schemas.GpIntegralInfo(
+            missing = colander.null,
+            )
 
 
 class GpNextPointsStatus(base_schemas.StrictMappingSchema):
