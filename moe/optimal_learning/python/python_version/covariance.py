@@ -95,7 +95,7 @@ class SquareExponential(CovarianceInterface):
 
         """
         temp = point_two - point_one
-        temp *= temp
+        temp = numpy.power(temp,2)
         temp /= self._lengths_sq
         return self._hyperparameters[0] * numpy.exp(-0.5 * temp.sum())
 
