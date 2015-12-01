@@ -7,7 +7,7 @@ See :mod:`moe.optimal_learning.python.interfaces.gaussian_process_interface` for
 
 """
 import copy
-
+import logging
 import numpy
 from scipy.special import erf
 
@@ -83,6 +83,7 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         self.low = low
         self.high = high
         self._build_precomputed_data()
+        self.log = logging.getLogger(__name__)
 
     @property
     def getLow(self):
@@ -395,16 +396,17 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
 
         # Compute grad variance
         grad_var = numpy.zeros((num_to_sample, num_to_sample, self.dim))
-        _hyperparameters = self._covariance.get_hyperparameters()
-        l = numpy.copy(_hyperparameters[self.idx +1]) # is it the last??
-        covariance = SquareExponential(numpy.delete(_hyperparameters, self.idx +1, 0))
+        hyperparameters = self._covariance.get_hyperparameters()
+        l = numpy.copy(hyperparameters[self.idx +1]) # is it the last??
+        covariance = SquareExponential(numpy.delete(hyperparameters, self.idx +1, 0))
         #delete integral dimension
         mask = numpy.ones(self._points_sampled.shape, dtype=bool)
-        mask[:,self.idx] = False
-        ps = self._points_sampled[mask]
+        mask[:, self.idx] = False
+        ps = self._points_sampled[mask].reshape(num_sampled,self.dim-1)
         mask2 = numpy.ones(points_to_sample.shape, dtype=bool)
         mask2[:,self.idx] = False
         pt = points_to_sample[mask2]
+        remapping_idx = numpy.where(mask2 == True)
         for i, point_one in enumerate(points_to_sample):
             for j, point_two in enumerate(points_to_sample):
                 if var_of_grad == i and var_of_grad == j:
@@ -414,14 +416,14 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
                     #calculating covariance, should happen in covariance class
                     k_xX = pt - ps
                     k_xX = numpy.power(k_xX,2)
-                    k_xX = numpy.divide(k_xX,covariance._lengths_sq).reshape(num_sampled,num_to_sample)
-                    k_xX = _hyperparameters[0] * numpy.exp(-0.5 * k_xX.sum(axis=1)).reshape(num_sampled,num_to_sample)
+                    k_xX = numpy.divide(k_xX,covariance._lengths_sq).reshape(num_sampled, self.dim-1)
+                    k_xX = hyperparameters[0] * numpy.exp(-0.5 * k_xX.sum(axis=1)).reshape(num_sampled,num_to_sample)
                     #
-                    diff = (ps - pt).reshape(num_sampled,num_to_sample)
+                    diff = (ps - pt)
                     xk_k_xX = numpy.multiply(diff, k_xX)
                     xk_k_xX_K_C = numpy.dot(xk_k_xX.T,self._K_C)
                     xk_k_xX_K_C_k_xX = numpy.dot(xk_k_xX_K_C, k_xX).reshape(self.dim-1)
-                    grad_var[i, j, ...] -= numpy.pi * xk_k_xX_K_C_k_xX
+                    grad_var[i, j, remapping_idx] -= numpy.pi * xk_k_xX_K_C_k_xX
                     grad_var[i,j,self.idx] = 0.0
         return grad_var
 
