@@ -70,87 +70,32 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             cls.assert_scalar_within_relative(left_ei, right_ei, 0.0)
             cls.assert_vector_within_relative(left_grad_ei, -right_grad_ei, 0.0)
 
-    # def test_multistart_monte_carlo_expected_improvement_optimization(self):
-    #     """Check that multistart optimization (gradient descent) can find the optimum point to sample (using 2-EI)."""
-    #     numpy.random.seed(7858)  # TODO(271): Monte Carlo only works for this seed
-    #     index = numpy.argmax(numpy.greater_equal(self.num_sampled_list, 20))
-    #     domain, gaussian_process = self.gp_test_environments[index]
-    #
-    #     max_num_steps = 75  # this is *too few* steps; we configure it this way so the test will run quickly
-    #     max_num_restarts = 5
-    #     num_steps_averaged = 50
-    #     gamma = 0.2
-    #     pre_mult = 1.5
-    #     max_relative_change = 1.0
-    #     tolerance = 3.0e-2  # really large tolerance b/c converging with monte-carlo (esp in Python) is expensive
-    #     gd_parameters = GradientDescentParameters(
-    #         max_num_steps,
-    #         max_num_restarts,
-    #         num_steps_averaged,
-    #         gamma,
-    #         pre_mult,
-    #         max_relative_change,
-    #         tolerance,
-    #     )
-    #     num_multistarts = 2
-    #
-    #     # Expand the domain so that we are definitely not doing constrained optimization
-    #     expanded_domain = TensorProductDomain([ClosedInterval(-2.0, 2.0),ClosedInterval(0.0, 10.0)])
-    #     num_to_sample = 1
-    #     repeated_domain = RepeatedDomain(num_to_sample, expanded_domain)
-    #
-    #     num_mc_iterations = 10000
-    #     # Just any random point that won't be optimal
-    #     points_to_sample = repeated_domain.generate_random_point_in_domain()
-    #     cora_ei_eval = ExpectedImprovement(gaussian_process, points_to_sample, num_mc_iterations=num_mc_iterations)
-    #     # Compute EI and its gradient for the sake of comparison
-    #     cora_param = list([1,0,10,0.1])
-    #     ei_initial = cora_ei_eval.compute_cora_expected_improvement(*cora_param,force_monte_carlo=True)  # TODO(271) Monte Carlo only works for this seed
-    #     grad_ei_initial = cora_ei_eval.compute_cora_grad_expected_improvement(*cora_param)
-    #
-    #     ei_optimizer = GradientDescentOptimizer(repeated_domain, cora_ei_eval, gd_parameters)
-    #     best_point = multistart_expected_improvement_optimization(ei_optimizer, num_multistarts, num_to_sample)
-    #
-    #     # Check that gradients are "small"
-    #     cora_ei_eval.current_point = best_point
-    #     ei_final = cora_ei_eval.compute_cora_expected_improvement(*cora_param,force_monte_carlo=True)  # TODO(271) Monte Carlo only works for this seed
-    #     grad_ei_final = cora_ei_eval.compute_cora_grad_expected_improvement(*cora_param)
-    #     self.assert_vector_within_relative(grad_ei_final, numpy.zeros(grad_ei_final.shape), tolerance)
-    #
-    #     # Check that output is in the domain
-    #     assert repeated_domain.check_point_inside(best_point) is True
-    #
-    #     # Since we didn't really converge to the optimal EI (too costly), do some other sanity checks
-    #     # EI should have improved
-    #     assert ei_final >= ei_initial
-
-
     def test_time_stationary_ego_plot(self):
         high = 0.6
         low = -0.5
         self.noiselvl = 0.3
         theta_0 = self.get_fixed_hyperparams(low, high)
-        for dsimgma in [3.0, 2.0, 1.0, 0.2, 0.15, 0.1, 0.05, 0.0, -0.05, -0.1, -0.15, -0.2]:
-            """Check that multistart optimization (gradient descent) can find the optimum point to sample (using 2-EI)."""
-            numpy.random.seed(numpy.random.randint(1,9999))  # TODO(271): Monte Carlo only works for this seed
+        for dsimgma in [0.0]:
+            numpy.random.seed(numpy.random.randint(1,9999))
+            print("Here")
             #number of ego iterations
             iterations = 100
             nr_threads = 4
-            runs = 50
+            runs = 1
             pre_samples = 5
             theta = numpy.copy(theta_0)
-
-
+            plot = True
             pool = Pool(nr_threads)
             self.results = list()
 
-
-            [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta, dsimgma, pre_samples), callback=self.collect_results) for x in range(runs)]
-            pool.close()
-            pool.join()
+            # [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta, dsimgma, pre_samples, plot), callback=self.collect_results) for x in range(runs)]
+            # pool.close()
+            # pool.join()
+            args = self.get_args(1, iterations, theta, dsimgma, pre_samples, plot)
+            self.results = self.time_stationary_ego(*args)
             res = numpy.asarray(self.results)
             print(res)
-            location = '/home/max/Documents/Thesis/results/results_sigma_' +str(dsimgma) + '_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations)
+            location = '/home/maxweule/Documents/Thesis/results/results_sigma_' +str(dsimgma) + '_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations)
             numpy.save(location, res)
             print('Results where saved to: ' + location)
             #print(res)
@@ -161,7 +106,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
     def collect_results(self, res):
         self.results.append(res)
 
-    def get_args(self, i, iterations, theta, sigma_2 = 0, pre_samples = 10):
+    def get_args(self, i, iterations, theta, sigma_2 = 0, pre_samples = 10, plot = False):
         num_multistarts = 4
         #define integral bounds ove time
         high = 0.6
@@ -178,10 +123,10 @@ class TestExpectedImprovement(GaussianProcessTestCase):
 
         points = self.get_starting_points(pre_samples, low, high)
         data = HistoricalData(2, points)
-        return theta, repeated_domain,iterations,data, params, lbfgs_parameters, num_multistarts, i, sigma_2, False
+        return theta, repeated_domain,iterations,data, params, lbfgs_parameters, num_multistarts, i, sigma_2, plot
 
     def get_fixed_hyperparams(self, low, high):
-        points_for_fitting = self.get_starting_points(500, low, high)
+        points_for_fitting = self.get_starting_points(20, low, high)
         data = HistoricalData(2, points_for_fitting)
         theta = self.fit_hyperparameters(data)
         return theta
@@ -225,6 +170,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         low = params[1]
         high = params[2]
         # theta = self.fit_hyperparameters(data)
+        theta = numpy.array([0.69684542,  0.36259494,  0.38517388 ])
         theta[2] += sigma_2
         print(theta)
         cov = SquareExponential(theta)
@@ -239,13 +185,14 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             #evaluate point
             data = self.append_evaluation(data, best_point, self.noiselvl)
             #fit new gaussian process to data
-            # theta = numpy.array([0.69684542,  0.36259494,  0.38517388 + sigma_2])#self.fit_hyperparameters(data)
+            #theta =self.fit_hyperparameters(data)
             cov = SquareExponential(theta)
             gaussian_process = IntegratedGaussianProcess(cov, data, *params)
             best_gp_mean = self.get_optimum(gaussian_process)
             points_sampled = data.points_sampled
             function_vals = data.points_sampled_value
             if(plot == True):
+                print("plotting")
                 self.plot_estimate(i, low, high, gaussian_process, cora_ei_eval, points_sampled, function_vals, theta, function_argument_list, starts, best_gp_mean ,threadid)
             res[i]= best_gp_mean[0]
         return res
@@ -370,7 +317,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         plt.xlim((lowx,highx))
         ax3.plot(x, -1*(numpy.sin(x*5) + 1.))
         plt.title("$Hyperparams:$" +" "+"$\sigma_f= $" + "$"+'%.2f' % hyperparams[0] +"$"+ " $,l_1=$"+ "$" +'%.2f' % hyperparams[1] + "$"+ " $,l_2=$" + "$"+'%.2f' % hyperparams[2]+ "$")
-        plt.savefig('/home/max/Documents/Thesis/plots/'+str(threadid)+'/' + str(iter) + '.png')
+        plt.savefig('/home/maxweule/Documents/Thesis/plots/iters/' + str(iter) + '.png')
         plt.close()
 
     def get_optimum(self,gp, n_starts = 4):
