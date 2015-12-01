@@ -7,7 +7,7 @@ See :mod:`moe.optimal_learning.python.interfaces.gaussian_process_interface` for
 
 """
 import copy
-
+import logging
 import numpy
 from scipy.special import erf
 
@@ -83,6 +83,7 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         self.low = low
         self.high = high
         self._build_precomputed_data()
+        self.log = logging.getLogger(__name__)
 
     @property
     def getLow(self):
@@ -234,7 +235,6 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
 
         # y_{k,i} = A_{k,j,i} * x_j
         grad_mu_star = numpy.einsum('ijk, j', grad_K_star, self._K_inv_y)
-
         return grad_mu_star
 
     def _compute_integrated_grad_covariance(self, point_one, point_two):
@@ -320,7 +320,7 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         norm2 = numpy.sqrt(2.0) * l
         norm3 = numpy.sqrt(2.0/numpy.pi) *l
         diff = (self.high-self.low)
-        const = norm1* (diff * erf(diff/norm2) + norm3 * (numpy.exp(-diff**2/(2.0*l**2)) -1.0))
+        const = norm1* (diff * erf(diff/norm2) + norm3 * (numpy.exp(-numpy.power(diff,2)/(2.0*numpy.power(l,2))) -1.0))
         for i, point_one in enumerate(points_to_sample):
             for j, point_two in enumerate(points_to_sample):
                 tmp_point_two = numpy.delete(point_two, self.idx, 0)
@@ -342,7 +342,7 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         #     overwrite_b=True,
         # )
 
-        normalization = l**2 * numpy.pi/2.0
+        normalization = numpy.power(l,2) * numpy.pi/2.0
 
         # cheaper to go through scipy.linalg.get_blas_funcs() which can compute A = alpha*B*C + beta*A in one pass
         # vtv_norm = numpy.dot(V.T, V) * normalization
@@ -390,93 +390,53 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
             overwrite_a=True,
         )
 
-    def __compute_grad_variance_of_points_per_point234(self, points_to_sample, var_of_grad):
-        r"""Compute the gradient of the variance (matrix) of this GP at a single point of ``Xs`` (``points_to_sample``) wrt ``Xs``.
-
-        See :meth:`~moe.optimal_learning.python.python_version.gaussian_process.GaussianProcess.compute_grad_variance_of_points` for more details.
-
-        :param points_to_sample: num_to_sample points (in dim dimensions) being sampled from the GP
-        :type points_to_sample: array of float64 with shape (num_to_sample, dim)
-        :param var_of_grad: index of ``points_to_sample`` to be differentiated against
-        :type var_of_grad: int in {0, .. ``num_to_sample``-1}
-        :return: grad_var: gradient of the variance matrix of this GP
-        :rtype: array of float64 with shape (num_to_sample, num_to_sample, dim)
-
-        """
-        # TODO(GH-62): This can be improved/optimized. see: gpp_math.cpp, GaussianProcess::ComputeGradVarianceOfPoints
-        num_to_sample = points_to_sample.shape[0]
-
-        # Compute grad variance
-        grad_var = numpy.zeros((num_to_sample, num_to_sample, self.dim))
-
-        K_star = self._build_integrated_covariance_maxtrix2(
-            self._covariance,
-            self._points_sampled,
-            points_to_sample,
-        )
-
-        _hyperparameters = self._covariance.get_hyperparameters()
-        l = numpy.copy(_hyperparameters[self.idx +1]) # is it the last??
-        covariance = SquareExponential(numpy.delete(_hyperparameters, self.idx +1, 0))
-        norm = numpy.pi /2.0
-        K_inv_times_K_star = numpy.dot(self._K_C, K_star)
-        for i, point_one in enumerate(points_to_sample):
-            for j, point_two in enumerate(points_to_sample):
-                if var_of_grad == i and var_of_grad == j:
-                    tmp_point_two = numpy.delete(point_two, self.idx, 0)
-                    tmp_point_one = numpy.delete(point_one, self.idx, 0)
-                    grad_var[i, j, ...] = covariance.covariance(tmp_point_one, tmp_point_two) * self.grad_var(point_one, point_two, l, self.idx)  #the K_star_start part
-                    for q, sampled_two in enumerate(self._points_sampled):
-                        for p, sampled_one in enumerate(self._points_sampled):
-                            tmp_sampled_two = numpy.delete(sampled_two, self.idx, 0)
-                            tmp_sampled_one = numpy.delete(sampled_one, self.idx, 0)
-                            grad_var[i, j, ...] -=  K_inv_times_K_star[q, i] * (sampled_two - point_one) * covariance.covariance(tmp_point_one, tmp_sampled_one) * norm
-                            grad_var[i, j, ...] -=  K_inv_times_K_star[p, i] * (sampled_one - point_one) * covariance.covariance(tmp_point_one, tmp_sampled_two) * norm
-                            grad_var[i,j,self.idx] = 0
-                elif var_of_grad == i:
-                    grad_var[i, j, ...] = covariance.covariance(tmp_point_one, tmp_point_two) * self.grad_var(point_one, point_two, l,self.idx)
-                    for idx_two, sampled_two in enumerate(self._points_sampled):
-                        grad_var[i, j, ...] -= K_inv_times_K_star[idx_two, j] * self._compute_integrated_grad_covariance2(sampled_two, point_one) * norm
-                elif var_of_grad == j:
-                    grad_var[i, j, ...] = covariance.covariance(tmp_point_two, tmp_point_one) * self.grad_var(point_two, point_one,l, self.idx)
-                    for idx_one, sampled_one in enumerate(self._points_sampled):
-                        grad_var[i, j, ...] -= K_inv_times_K_star[idx_one, i] * self._compute_integrated_grad_covariance2(sampled_two, point_two) * norm
-        return grad_var
-
     def __compute_grad_variance_of_points_per_point(self, points_to_sample, var_of_grad):
         num_to_sample = points_to_sample.shape[0]
+        num_sampled = self._points_sampled.shape[0]
 
         # Compute grad variance
         grad_var = numpy.zeros((num_to_sample, num_to_sample, self.dim))
         _hyperparameters = self._covariance.get_hyperparameters()
         l = numpy.copy(_hyperparameters[self.idx +1]) # is it the last??
         covariance = SquareExponential(numpy.delete(_hyperparameters, self.idx +1, 0))
-        norm =numpy.pi /2.0
-
+        #delete integral dimension
+        mask = numpy.ones(self._points_sampled.shape, dtype=bool)
+        mask[:, self.idx] = False
+        ps = self._points_sampled[mask].reshape(num_sampled,self.dim-1)
+        mask2 = numpy.ones(points_to_sample.shape, dtype=bool)
+        mask2[:,self.idx] = False
+        pt = points_to_sample[mask2]
+        remapping_idx = numpy.where(mask2 == True)
         for i, point_one in enumerate(points_to_sample):
             for j, point_two in enumerate(points_to_sample):
                 if var_of_grad == i and var_of_grad == j:
                     tmp_point_two = numpy.delete(point_two, self.idx, 0)
                     tmp_point_one = numpy.delete(point_one, self.idx, 0)
-                    grad_var[i, j, ...] = covariance.covariance(tmp_point_one, tmp_point_two) * self.grad_var(point_one, point_two, l, self.idx)  #the K_star_start part
-                    for q, x_q in enumerate(self._points_sampled):
-                        for p, x_p in enumerate(self._points_sampled):
-                            tmp_x_q = numpy.delete(x_q, self.idx, 0)
-                            tmp_x_p = numpy.delete(x_p, self.idx, 0)
-                            grad_var[i, j, ...] -= norm * self._K_C[q, p] * covariance.covariance(tmp_point_one, tmp_x_p) * covariance.covariance(tmp_point_one, tmp_x_q) * (x_p + x_q - 2*point_one)
-                            grad_var[i,j,self.idx] = 0
+                    grad_var[i, j, ...] = covariance.covariance(tmp_point_one, tmp_point_two) * self._grad_var(point_one, point_two, l, self.idx)  #the K_star part
+                    #calculating covariance, should happen in covariance class
+                    k_xX = pt - ps
+                    k_xX = numpy.power(k_xX,2)
+                    k_xX = numpy.divide(k_xX,covariance._lengths_sq).reshape(num_sampled, self.dim-1)
+                    k_xX = _hyperparameters[0] * numpy.exp(-0.5 * k_xX.sum(axis=1)).reshape(num_sampled,num_to_sample)
+                    #
+                    diff = (ps - pt)
+                    xk_k_xX = numpy.multiply(diff, k_xX)
+                    xk_k_xX_K_C = numpy.dot(xk_k_xX.T,self._K_C)
+                    xk_k_xX_K_C_k_xX = numpy.dot(xk_k_xX_K_C, k_xX).reshape(self.dim-1)
+                    mask = numpy.ones(grad_var.shape, dtype=bool)
+                    grad_var[i, j, remapping_idx] -= numpy.pi * xk_k_xX_K_C_k_xX
+                    grad_var[i,j,self.idx] = 0.0
         return grad_var
 
-
-    def grad_var(self, point_one, point_two, l, idx):
+    def _grad_var(self, point_one, point_two, l, idx):
         diff_points = point_two - point_one
-        diff_points[idx] = 0
+        diff_points[idx] = 0.0
         norm = 2.0 * numpy.sqrt(numpy.pi/2.0) /l
         norm2 = numpy.sqrt(2.0) * l
         norm3 = numpy.sqrt(2.0/numpy.pi) *l
-        norm4 = 2.0 * l**2
+        norm4 = 2.0 * numpy.power(l,2)
         diff_bounds = self.high - self.low
-        return diff_points * norm  * (diff_bounds * erf(diff_bounds/norm2) + norm3 * (numpy.exp(-(diff_bounds**2)/norm4) - 1))
+        return diff_points * norm  * (diff_bounds * erf(diff_bounds/norm2) + norm3 * (numpy.exp(-(numpy.power(diff_bounds,2))/norm4) - 1.0))
 
     def compute_grad_variance_of_points(self, points_to_sample, num_derivatives=-1):
         r"""Compute the gradient of the variance (matrix) of this GP at each point of ``Xs`` (``points_to_sample``) wrt ``Xs``.
