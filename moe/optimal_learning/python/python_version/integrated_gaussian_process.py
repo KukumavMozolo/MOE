@@ -391,18 +391,18 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
 
     def __compute_grad_variance_of_points_per_point(self, points_to_sample, var_of_grad):
         num_to_sample = points_to_sample.shape[0]
+        num_sampled = self._points_sampled.shape[0]
 
         # Compute grad variance
         grad_var = numpy.zeros((num_to_sample, num_to_sample, self.dim))
         _hyperparameters = self._covariance.get_hyperparameters()
         l = numpy.copy(_hyperparameters[self.idx +1]) # is it the last??
         covariance = SquareExponential(numpy.delete(_hyperparameters, self.idx +1, 0))
-        norm =numpy.pi /2.0
+        #delete integral dimension
         mask = numpy.ones(self._points_sampled.shape, dtype=bool)
         mask[:,self.idx] = False
         ps = self._points_sampled[mask]
         mask2 = numpy.ones(points_to_sample.shape, dtype=bool)
-        #print(mask2)
         mask2[:,self.idx] = False
         pt = points_to_sample[mask2]
         for i, point_one in enumerate(points_to_sample):
@@ -410,41 +410,22 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
                 if var_of_grad == i and var_of_grad == j:
                     tmp_point_two = numpy.delete(point_two, self.idx, 0)
                     tmp_point_one = numpy.delete(point_one, self.idx, 0)
-                    grad_var[i, j, ...] = covariance.covariance(tmp_point_one, tmp_point_two) * self.grad_var(point_one, point_two, l, self.idx)  #the K_star_start part
+                    grad_var[i, j, ...] = covariance.covariance(tmp_point_one, tmp_point_two) * self._grad_var(point_one, point_two, l, self.idx)  #the K_star part
+                    #calculating covariance, should happen in covariance class
                     k_xX = pt - ps
                     k_xX = numpy.power(k_xX,2)
-                    k_xX = numpy.divide(k_xX,covariance._lengths_sq).reshape(self._points_sampled.shape[0],num_to_sample)
-                    #print("Shape of zero:" + str(k_xX.shape))
-                    k_xX = _hyperparameters[0] * numpy.exp(-0.5 * k_xX.sum(axis=1)).reshape(self._points_sampled.shape[0],num_to_sample)
-                    #print("Shape of first:" + str(k_xX.shape))
-                    diff = (ps - pt).reshape(self._points_sampled.shape[0],num_to_sample)
-                    #print("Shape of diff:" + str(diff.shape))
+                    k_xX = numpy.divide(k_xX,covariance._lengths_sq).reshape(num_sampled,num_to_sample)
+                    k_xX = _hyperparameters[0] * numpy.exp(-0.5 * k_xX.sum(axis=1)).reshape(num_sampled,num_to_sample)
+                    #
+                    diff = (ps - pt).reshape(num_sampled,num_to_sample)
                     xk_k_xX = numpy.multiply(diff, k_xX)
-                    #print("Shape of second:" + str(xk_k_xX.shape))
                     xk_k_xX_K_C = numpy.dot(xk_k_xX.T,self._K_C)
-                    #print("Shape of third:" + str(xk_k_xX_K_C.shape))
                     xk_k_xX_K_C_k_xX = numpy.dot(xk_k_xX_K_C, k_xX).reshape(self.dim-1)
-                    #print("Shape of forth:" + str(xk_k_xX_K_C_k_xX.shape))
                     grad_var[i, j, ...] -= numpy.pi * xk_k_xX_K_C_k_xX
                     grad_var[i,j,self.idx] = 0.0
         return grad_var
 
-
-    def __compute_grad_variance_of_points_per_point_matrix(self, points_to_sample, var_of_grad):
-        num_to_sample = points_to_sample.shape[0]
-        # Compute grad variance
-        grad_var = numpy.zeros((num_to_sample, num_to_sample, self.dim))
-        _hyperparameters = self._covariance.get_hyperparameters()
-        l = numpy.copy(_hyperparameters[self.idx +1]) # is it the last??
-        covariance = SquareExponential(numpy.delete(_hyperparameters, self.idx +1, 0))
-        norm =numpy.pi /2.0
-        point_one = points_to_sample[0];
-        tmp_point_one = numpy.delete(point_one, self.idx, 0)
-        Kxi = covariance.covariance(tmp_point_one)
-        self._K_C
-
-
-    def grad_var(self, point_one, point_two, l, idx):
+    def _grad_var(self, point_one, point_two, l, idx):
         diff_points = point_two - point_one
         diff_points[idx] = 0.0
         norm = 2.0 * numpy.sqrt(numpy.pi/2.0) /l
