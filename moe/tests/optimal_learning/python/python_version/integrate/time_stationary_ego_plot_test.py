@@ -175,13 +175,15 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         print(theta)
         cov = SquareExponential(theta)
         gaussian_process = IntegratedGaussianProcess(cov, data, *params)
+        ts = numpy.random.uniform(low,high,20)
+        print(ts)
         for i in range(iterations):
             print('Thread: '+ str( threadid) + ' at : ' + str(100*i/iterations) + '%')
             #find new point to sample
-            cora_ei_eval = ExpectedImprovement(gaussian_process)
+            cora_ei_eval = ExpectedImprovement(gaussian_process, t=ts[i%20])
             ei_optimizer = LBFGSBOptimizer(repeated_domain, cora_ei_eval, lbfgs_parameters)
             best_point, function_argument_list, starts = self.multistart_expected_improvement_optimization(ei_optimizer, num_multistarts)
-            best_point[:,1] = numpy.random.uniform(low,high,1)#random time corresponds to rl testcase
+            best_point[:,1] = ts[i%20]#random time corresponds to rl testcase
             #evaluate point
             data = self.append_evaluation(data, best_point, self.noiselvl)
             #fit new gaussian process to data
@@ -251,7 +253,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
 
         e = numpy.random.normal(0, 1, (n,n))
         #return np.sin(a*5) * np.exp(-(b)**2) + 1.0 #+ e
-        return x(a,b)*y(a,b) +1.0 + numpy.random.normal(0, self.noiselvl)
+        return x(a,b)*y(a,b)  + numpy.random.normal(0, self.noiselvl)
 
     def append_evaluation(self, points, new_point, var):
         r"""

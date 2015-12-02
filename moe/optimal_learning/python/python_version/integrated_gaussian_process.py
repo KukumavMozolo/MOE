@@ -12,6 +12,7 @@ import numpy
 from scipy.special import erf
 
 import scipy.linalg
+from moe.optimal_learning.python.geometry_utils import ClosedInterval
 from moe.optimal_learning.python.python_version.covariance import SquareExponential
 
 from moe.optimal_learning.python.interfaces.gaussian_process_interface import GaussianProcessInterface
@@ -25,6 +26,11 @@ from moe.optimal_learning.python.python_version import python_utils
 #: is below the smallest amount of noise users can meaningfully add.
 #: This value was chosen to be consistent with the singularity condition in scipy.linalg.cho_factor
 #: and tested for robustness with the setup in test_1d_analytic_ei_edge_cases().
+from moe.optimal_learning.python.python_version.domain import TensorProductDomain
+from moe.optimal_learning.python.python_version.optimizable_guassian_process import OptimizableGaussianProcess
+from moe.optimal_learning.python.python_version.optimization import LBFGSBOptimizer, multistart_optimize, \
+    LBFGSBParameters
+
 MINIMUM_STD_DEV_GRAD_CHOLESKY = numpy.finfo(numpy.float64).eps
 
 
@@ -179,6 +185,43 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         mu_star = numpy.dot(K_star.T, self._K_inv_y)
         return mu_star * 1.0/(self.high - self.low)
 
+    def get_optimum(self,gp, n_starts = 4):
+        approx_grad = False
+        max_func_evals = 15000
+        max_metric_correc = 10
+        pgtol = 1.0e-8
+        epsilon = 1.0e-8
+        tolerance = 3.0e-5
+        lbfgs_parameters = LBFGSBParameters(
+            approx_grad,
+            max_func_evals,
+            max_metric_correc,
+            tolerance,
+            pgtol,
+            epsilon
+        )
+
+        optimizable_gp = OptimizableGaussianProcess(gp)
+        expanded_domain = TensorProductDomain([ClosedInterval(-0.5, 0.7), ClosedInterval(-0.5, 0.7)])
+        gp_optimizer = LBFGSBOptimizer(expanded_domain, optimizable_gp, lbfgs_parameters)
+        #use allways same starting position here, assuming optimum is known
+        x = numpy.linspace(-0.5, 0.6, n_starts)
+        x_tmp = numpy.zeros((n_starts,2))
+        x_tmp[:,0] = x
+        best_point, random_starts_values, function_argument_list = multistart_optimize(gp_optimizer, starting_points=x_tmp, num_multistarts = n_starts)
+        var = self._compute_variance_of_points(best_point.reshape(1,2))
+        sqrtvar = numpy.sqrt(var)
+        return numpy.amin(random_starts_values) /sqrtvar
+
+    def _best_so_far_at_t(self,t):
+        points_at_t_idx =  numpy.where(self._historical_data.points_sampled[:,self.idx] ==t)
+        print(self._historical_data.points_sampled)
+        print(t)
+        if points_at_t_idx[0].size >0:
+            best_at_t = numpy.amin(self._historical_data.points_sampled_value[points_at_t_idx])
+        else:
+            best_at_t = numpy.amin(self._historical_data.points_sampled_value)
+        return best_at_t
 
     def _build_integrated_covariance_maxtrix(self, covariance, points_sampled, points_to_sample):
         _hyperparameters = covariance.get_hyperparameters()
