@@ -183,6 +183,7 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         points_at_t_idx =  numpy.where(self._historical_data.points_sampled[:,self.idx] ==t)
         if points_at_t_idx[0].size >0:
             best_at_t = numpy.amin(self._historical_data.points_sampled_value[points_at_t_idx])
+            self.log.info("Moe uses sample time: " + str(t))
         else:
             best_at_t = numpy.amin(self._historical_data.points_sampled_value)
         return best_at_t
