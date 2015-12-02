@@ -175,6 +175,9 @@ class GpNextPointsRequest(base_schemas.StrictMappingSchema):
     gp_integral_info = base_schemas.GpIntegralInfo(
             missing = colander.null,
             )
+    sample_time = colander.SchemaNode(
+            colander.Float(),
+            missing=None)
 
 
 class GpNextPointsStatus(base_schemas.StrictMappingSchema):

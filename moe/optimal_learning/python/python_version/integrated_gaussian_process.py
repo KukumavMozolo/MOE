@@ -179,6 +179,13 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         mu_star = numpy.dot(K_star.T, self._K_inv_y)
         return mu_star * 1.0/(self.high - self.low)
 
+    def _best_so_far_at_t(self,t):
+        points_at_t_idx =  numpy.where(self._historical_data.points_sampled[:,self.idx] ==t)
+        if points_at_t_idx[0].size >0:
+            best_at_t = numpy.amin(self._historical_data.points_sampled_value[points_at_t_idx])
+        else:
+            best_at_t = numpy.amin(self._historical_data.points_sampled_value)
+        return best_at_t
 
     def _build_integrated_covariance_maxtrix(self, covariance, points_sampled, points_to_sample):
         _hyperparameters = covariance.get_hyperparameters()

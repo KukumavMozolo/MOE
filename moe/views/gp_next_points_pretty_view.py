@@ -74,7 +74,7 @@ class GpNextPointsPrettyView(OptimizableGpPrettyView):
         num_to_sample = params.get('num_to_sample')
         num_mc_iterations = params.get('mc_iterations')
         max_num_threads = params.get('max_num_threads')
-
+        sample_time = params.get('sample_time')
         gaussian_process = _make_gp_from_params(params)
 
         ei_opt_status = {}
@@ -89,6 +89,7 @@ class GpNextPointsPrettyView(OptimizableGpPrettyView):
                     gaussian_process,
                     points_being_sampled=points_being_sampled,
                     num_mc_iterations=num_mc_iterations,
+                    t=sample_time,
                     )
         else:
             # Calculate the next best points to sample given the historical data
@@ -101,7 +102,8 @@ class GpNextPointsPrettyView(OptimizableGpPrettyView):
                         gaussian_process,
                         points_being_sampled=points_being_sampled,
                         num_mc_iterations=num_mc_iterations,
-                        mvndst_parameters=_make_mvndst_parameters_from_params(params)
+                        mvndst_parameters=_make_mvndst_parameters_from_params(params),
+                        t=sample_time,
                         )
 
                 opt_method = getattr(moe.optimal_learning.python.python_version.expected_improvement, optimizer_method_name)
