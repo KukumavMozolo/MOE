@@ -160,6 +160,14 @@ class GaussianProcess(GaussianProcessInterface):
         mu_star = numpy.dot(K_star.T, self._K_inv_y)
         return mu_star
 
+    def _best_average_over(self, T):
+        best_at_t = 0.0
+        for t in T:
+            points_at_t_idx =  numpy.where(self._historical_data.points_sampled[:,1] ==t)
+            if points_at_t_idx[0].size >0:
+                best_at_t += numpy.amin(self._historical_data.points_sampled_value[points_at_t_idx])
+        return best_at_t / numpy.size(T)
+
     def compute_grad_mean_of_points(self, points_to_sample, num_derivatives=-1):
         r"""Compute the gradient of the mean of this GP at each of point of ``Xs`` (``points_to_sample``) wrt ``Xs``.
 

@@ -20,7 +20,9 @@ class CoraExpectedImprovement(ExpectedImprovement):
             points_being_sampled=None,
             num_mc_iterations=DEFAULT_EXPECTED_IMPROVEMENT_MC_ITERATIONS,
             randomness=None,
-            mvndst_parameters=None
+            mvndst_parameters=None,
+            t=None,
+            T=None
     ):
         super(CoraExpectedImprovement,self).__init__(
             gaussian_process,
@@ -28,7 +30,9 @@ class CoraExpectedImprovement(ExpectedImprovement):
             points_being_sampled,
             num_mc_iterations,
             randomness,
-            mvndst_parameters)
+            mvndst_parameters,
+            t,
+            T)
         self.c_idx = c_idx
         self.c_0 = c_0
         self.c_max = c_max
@@ -53,7 +57,6 @@ class CoraExpectedImprovement(ExpectedImprovement):
         c_current = self.c_0
         ei = 0
         count = 0
-
         while c_current <= self.c_max:
             self._points_to_sample[:, self.c_idx] = c_current
             ei +=  super(CoraExpectedImprovement, self).compute_expected_improvement(force_monte_carlo, force_1d_ei)
@@ -82,8 +85,7 @@ class CoraExpectedImprovement(ExpectedImprovement):
         count = 0.0
 
         while c_current <= self.c_max:
-            #print(self.points_to_sample)
-            self.points_to_sample[:,self.c_idx] = c_current
+            self._points_to_sample[:,self.c_idx] = c_current
             grad_ei +=  super(CoraExpectedImprovement, self).compute_grad_expected_improvement(force_monte_carlo)
             c_current += self.c_delta
             count += 1.0

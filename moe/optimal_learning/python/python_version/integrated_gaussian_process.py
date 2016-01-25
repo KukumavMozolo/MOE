@@ -215,13 +215,19 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
 
     def _best_so_far_at_t(self,t):
         points_at_t_idx =  numpy.where(self._historical_data.points_sampled[:,self.idx] ==t)
-        print(self._historical_data.points_sampled)
-        print(t)
         if points_at_t_idx[0].size >0:
             best_at_t = numpy.amin(self._historical_data.points_sampled_value[points_at_t_idx])
         else:
             best_at_t = numpy.amin(self._historical_data.points_sampled_value)
         return best_at_t
+
+    def _best_average_over(self, T):
+        best_at_t = 0.0
+        for t in T:
+            points_at_t_idx =  numpy.where(self._historical_data.points_sampled[:,self.idx] ==t)
+            if points_at_t_idx[0].size >0:
+                best_at_t += numpy.amin(self._historical_data.points_sampled_value[points_at_t_idx])
+        return best_at_t / numpy.size(T)
 
     def _build_integrated_covariance_maxtrix(self, covariance, points_sampled, points_to_sample):
         _hyperparameters = covariance.get_hyperparameters()

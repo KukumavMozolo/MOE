@@ -154,7 +154,8 @@ class ExpectedImprovement(ExpectedImprovementInterface, OptimizableInterface):
             num_mc_iterations=DEFAULT_EXPECTED_IMPROVEMENT_MC_ITERATIONS,
             randomness=None,
             mvndst_parameters=None,
-            t=None
+            t=None,
+            T=None
     ):
         """Construct an ExpectedImprovement object that supports q,p-EI.
 
@@ -177,6 +178,8 @@ class ExpectedImprovement(ExpectedImprovementInterface, OptimizableInterface):
         if gaussian_process._points_sampled_value.size > 0:
             if t!=None:
                 self._best_so_far = gaussian_process._best_so_far_at_t(t)
+            if T!=None:
+                self._best_so_far = gaussian_process._best_average_over(T)
             else:
                 self._best_so_far = numpy.amin(gaussian_process._points_sampled_value)
             #self._best_so_far = gaussian_process.get_optimum(gaussian_process)

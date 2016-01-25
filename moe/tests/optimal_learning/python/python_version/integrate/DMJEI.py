@@ -7,8 +7,10 @@ import matplotlib.pyplot as plt
 from multiprocessing import Process, Pool
 
 from moe.optimal_learning.python.python_version.integrated_gaussian_process import IntegratedGaussianProcess
+from moe.optimal_learning.python.python_version.gaussian_process import GaussianProcess
 from moe.optimal_learning.python.data_containers import HistoricalData, SamplePoint
 from moe.optimal_learning.python.geometry_utils import ClosedInterval
+from moe.optimal_learning.python.python_version.cora_ecpected_imrovement import  CoraExpectedImprovement
 from moe.optimal_learning.python.python_version.expected_improvement import  ExpectedImprovement
 from moe.optimal_learning.python.python_version.covariance import SquareExponential
 from moe.optimal_learning.python.python_version.domain import TensorProductDomain
@@ -74,39 +76,39 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         high = 0.6
         low = -0.5
         self.noiselvl = 0.3
-        theta_0 = self.get_fixed_hyperparams(low, high)
+        theta_0 = [ 0.12837005,  0.2854727,   0.30107687]
         for dsimgma in [0.0]:
             numpy.random.seed(numpy.random.randint(1,9999))
             print("Here")
             #number of ego iterations
-            iterations = 100
+            iterations = 80
             nr_threads = 4
-            runs = 1
-            pre_samples = 5
-            theta = numpy.copy(theta_0)
-            plot = True
+            runs = 500
+            pre_samples = 1
+            N=0.2
+            plot = False
             pool = Pool(nr_threads)
             self.results = list()
+            self.ei = list()
 
-            # [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta, dsimgma, pre_samples, plot), callback=self.collect_results) for x in range(runs)]
-            # pool.close()
-            # pool.join()
-            args = self.get_args(1, iterations, theta, dsimgma, pre_samples, plot)
-            self.results = self.time_stationary_ego(*args)
+            [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta_0, N, dsimgma, pre_samples, plot), callback=self.collect_results) for x in range(runs)]
+            pool.close()
+            pool.join()
+            # args = self.get_args(1, iterations, theta_0, N, dsimgma, pre_samples, plot)
+            # res, ei = self.time_stationary_ego(*args)
             res = numpy.asarray(self.results)
-            print(res)
-            location = '/home/kaw/Dokumente/Thesis/results/results_sigma_' +str(dsimgma) + '_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations)
+            ei = numpy.asarray(self.ei)
+            location = '/home/kaw/Dokumente/Thesis/results/DMJEI_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations)+ '_N_' + str(N)
             numpy.save(location, res)
+            numpy.save(location +'_ei', ei)
             print('Results where saved to: ' + location)
-            #print(res)
-            #mean = res.mean(axis=0)
-            #asd = numpy.load('/home/max/Documents/Thesis/results/results' + str(nr_threads*runs) + '.npy')
-
         assert(True)
-    def collect_results(self, res):
-        self.results.append(res)
 
-    def get_args(self, i, iterations, theta, sigma_2 = 0, pre_samples = 10, plot = False):
+    def collect_results(self,res):
+        self.results.append(res[0])
+        self.ei.append(res[1])
+
+    def get_args(self, i, iterations, theta, N, sigma_2 = 0.0, pre_samples = 10, plot = False):
         num_multistarts = 4
         #define integral bounds ove time
         high = 0.6
@@ -123,7 +125,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
 
         points = self.get_starting_points(pre_samples, low, high)
         data = HistoricalData(2, points)
-        return theta, repeated_domain,iterations,data, params, lbfgs_parameters, num_multistarts, i, sigma_2, plot
+        return theta, repeated_domain,iterations,data, params, lbfgs_parameters, num_multistarts, i, N, sigma_2,plot
 
     def get_fixed_hyperparams(self, low, high):
         points_for_fitting = self.get_starting_points(20, low, high)
@@ -164,40 +166,39 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         return gd_parameters, lbfgs_parameters
 
 
-    def time_stationary_ego(self, theta, repeated_domain, iterations, data, params, lbfgs_parameters, num_multistarts,threadid, sigma_2=0, plot = True):
+    def time_stationary_ego(self, theta, repeated_domain, iterations, data, params, lbfgs_parameters, num_multistarts,threadid, N,sigma_2=0, plot = True):
         res = numpy.zeros((iterations))
+        ei = numpy.zeros((iterations))
         idx = params[0]
         low = params[1]
         high = params[2]
-        # theta = self.fit_hyperparameters(data)
-        theta = numpy.array([0.69684542,  0.36259494,  0.38517388 ])
         theta[2] += sigma_2
         print(theta)
         cov = SquareExponential(theta)
-        gaussian_process = IntegratedGaussianProcess(cov, data, *params)
+        gaussian_process = GaussianProcess(cov, data)
         ts = numpy.random.uniform(low,high,20)
-        print(ts)
         for i in range(iterations):
             print('Thread: '+ str( threadid) + ' at : ' + str(100*i/iterations) + '%')
             #find new point to sample
-            cora_ei_eval = ExpectedImprovement(gaussian_process, T=ts)
+            cora_ei_eval = CoraExpectedImprovement(gaussian_process, idx, low, high, N)
             ei_optimizer = LBFGSBOptimizer(repeated_domain, cora_ei_eval, lbfgs_parameters)
             best_point, function_argument_list, starts = self.multistart_expected_improvement_optimization(ei_optimizer, num_multistarts)
-            best_point[:,1] = ts[i%20]#random time corresponds to rl testcase
+            best_point[:,1] = numpy.random.uniform(low,high,1)#random time corresponds to rl testcase
+            ei[i] = cora_ei_eval.evaluate_at_point_list(best_point)
             #evaluate point
             data = self.append_evaluation(data, best_point, self.noiselvl)
-            #fit new gaussian process to data
-            #theta =self.fit_hyperparameters(data)
             cov = SquareExponential(theta)
-            gaussian_process = IntegratedGaussianProcess(cov, data, *params)
-            best_gp_mean = self.get_optimum(gaussian_process)
-            points_sampled = data.points_sampled
-            function_vals = data.points_sampled_value
+            gaussian_process = GaussianProcess(cov, data)
+            plot_gp = IntegratedGaussianProcess(cov, data, *params)
+            best_gp_mean = self.get_optimum(plot_gp)
+
             if(plot == True):
+                points_sampled = data.points_sampled
+                function_vals = data.points_sampled_value
                 print("plotting")
-                self.plot_estimate(i, low, high, gaussian_process, cora_ei_eval, points_sampled, function_vals, theta, function_argument_list, starts, best_gp_mean ,threadid)
+                self.plot_estimate(i, low, high, plot_gp, cora_ei_eval, points_sampled, function_vals, theta, function_argument_list, starts, best_gp_mean ,threadid)
             res[i]= best_gp_mean[0]
-        return res
+        return [res, ei]
 
 
     def fit_hyperparameters(self, data):
