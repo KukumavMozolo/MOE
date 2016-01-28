@@ -11,7 +11,6 @@ from moe.optimal_learning.python.python_version.gaussian_process import Gaussian
 from moe.optimal_learning.python.data_containers import HistoricalData, SamplePoint
 from moe.optimal_learning.python.geometry_utils import ClosedInterval
 from moe.optimal_learning.python.python_version.cora_ecpected_imrovement import  CoraExpectedImprovement
-from moe.optimal_learning.python.python_version.expected_improvement import  ExpectedImprovement
 from moe.optimal_learning.python.python_version.covariance import SquareExponential
 from moe.optimal_learning.python.python_version.domain import TensorProductDomain
 from moe.optimal_learning.python.python_version.optimizable_guassian_process import OptimizableGaussianProcess
@@ -82,9 +81,9 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             #number of ego iterations
             iterations = 80
             nr_threads = 4
-            runs = 500
+            runs = 200
             pre_samples = 1
-            N= 0.2
+            N= 0.1
             plot = False
             pool = Pool(nr_threads)
             self.results = list()
@@ -93,11 +92,11 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta_0, N,dsimgma, pre_samples, plot), callback=self.collect_results) for x in range(runs)]
             pool.close()
             pool.join()
-            # args = self.get_args(1, iterations, theta_0, dsimgma, pre_samples, plot)
+            # args = self.get_args(1, iterations, theta_0, N, dsimgma, pre_samples, plot)
             # res, ei = self.time_stationary_ego(*args)
             res = numpy.asarray(self.results)
             ei = numpy.asarray(self.ei)
-            location = '/home/kaw/Dokumente/Thesis/results/BADMJEI_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations) + '_N_' + str(N)
+            location = '/home/kaw/Dokumente/Thesis/results/BADMJEI_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations) + '_N_' + str(N) +'_opta'
             numpy.save(location, res)
             numpy.save(location +'_ei', ei)
             print('Results where saved to: ' + location)
@@ -176,7 +175,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         print(theta)
         cov = SquareExponential(theta)
         gaussian_process = GaussianProcess(cov, data)
-        ts = numpy.random.uniform(low,high,20)
+        ts = numpy.linspace(low,high,20)
         for i in range(iterations):
             print('Thread: '+ str( threadid) + ' at : ' + str(100*i/iterations) + '%')
             #find new point to sample

@@ -55,11 +55,11 @@ class CoraExpectedImprovement(ExpectedImprovement):
         :rtype: float64
         """
         c_current = self.c_0
-        ei = 0
-        count = 0
+        ei = 0.0
+        count = 0.0
         while c_current <= self.c_max:
             self._points_to_sample[:, self.c_idx] = c_current
-            ei +=  super(CoraExpectedImprovement, self).compute_expected_improvement(force_monte_carlo, force_1d_ei)
+            ei +=  super(CoraExpectedImprovement, self).compute_expected_improvement(True, force_1d_ei)
             c_current += self.c_delta
             count += 1.0
 

@@ -74,12 +74,12 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         high = 0.6
         low = -0.5
         self.noiselvl = 0.3
-        theta_0 = self.get_fixed_hyperparams(low, high)
+        theta_0 = [ 0.12837005,  0.2854727,   0.30107687]
         for dsimgma in [0.0]:
             numpy.random.seed(numpy.random.randint(1,9999))
             print("Here")
             #number of ego iterations
-            iterations = 80
+            iterations = 150
             nr_threads = 4
             runs = 500
             pre_samples = 1
@@ -91,16 +91,16 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta_0, dsimgma, pre_samples, plot), callback=self.collect_results) for x in range(runs)]
             pool.close()
             pool.join()
-            # args = self.get_args(1, iterations, theta, dsimgma, pre_samples, plot)
+            # args = self.get_args(1, iterations, theta_0, dsimgma, pre_samples, plot)
             # res, ei = self.time_stationary_ego(*args)
             res = numpy.asarray(self.results)
             ei = numpy.asarray(self.ei)
-            location = '/home/kaw/Dokumente/Thesis/results/MGP_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations)
+            location = '/home/kaw/Dokumente/Thesis/results/BAMGP_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations) +'_opta'
             numpy.save(location, res)
             numpy.save(location +'_ei', ei)
             print('Results where saved to: ' + location)
-        assert(True)
 
+        assert(True)
     def collect_results(self,res):
         self.results.append(res[0])
         self.ei.append(res[1])
@@ -173,13 +173,16 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         print(theta)
         cov = SquareExponential(theta)
         gaussian_process = IntegratedGaussianProcess(cov, data, *params)
+        ts = numpy.random.uniform(low,high,20)
+        print(ts)
+        print(iterations)
         for i in range(iterations):
             print('Thread: '+ str( threadid) + ' at : ' + str(100*i/iterations) + '%')
             #find new point to sample
-            cora_ei_eval = ExpectedImprovement(gaussian_process)
+            cora_ei_eval = ExpectedImprovement(gaussian_process, T=ts)
             ei_optimizer = LBFGSBOptimizer(repeated_domain, cora_ei_eval, lbfgs_parameters)
             best_point, function_argument_list, starts = self.multistart_expected_improvement_optimization(ei_optimizer, num_multistarts)
-            best_point[:,1] = numpy.random.uniform(low,high,1)#random time corresponds to rl testcase
+            best_point[:,1] = ts[i%20]#random time corresponds to rl testcase
             ei[i] = cora_ei_eval.evaluate_at_point_list(best_point)
             #evaluate point
             data = self.append_evaluation(data, best_point, self.noiselvl)
