@@ -9,6 +9,7 @@ def load():
     location5 = '/home/kaw/Dokumente/Thesis/results/BAMGP_runs_500_pre_1_iters_80_opta.npy'
     location6 = '/home/kaw/Dokumente/Thesis/results/BADMJEI_runs_500_pre_1_iters_80_N_0.1_opta.npy'
     location7 = '/home/kaw/Dokumente/Thesis/results/DMJEI_runs_500_pre_1_iters_80_N_0.2.npy'
+    location8 = '/home/kaw/Dokumente/Thesis/results/DMJEI_runs_500_pre_1_iters_80_N_0.1.npy'
     BADMJEI = np.load(location)
     BAMGP = np.load(location2)
     MGP = np.load(location3)
@@ -16,6 +17,7 @@ def load():
     BAMGP_opt = np.load(location5)
     BADMJEI_op = np.load(location6)
     DMJEI = np.load(location7)
+    DMJEI_2 = np.load(location8)
     convs = {'BADMJEI':BADMJEI}
     convs.update({'BAMGP': BAMGP})
     convs.update({'MGP': MGP})
@@ -23,6 +25,7 @@ def load():
     convs.update({'BAMGP_opt': BAMGP_opt})
     convs.update({'BADMJEI_op': BADMJEI_op})
     convs.update({'DMJEI': DMJEI})
+    convs.update({'DMJEI2': DMJEI_2})
     return convs
 
 def add_plot(data, title, color, show_var = True):
@@ -48,6 +51,7 @@ def load_ei():
     location5 = '/home/kaw/Dokumente/Thesis/results/BAMGP_runs_500_pre_1_iters_80_opta_ei.npy'
     location6 = '/home/kaw/Dokumente/Thesis/results/BADMJEI_runs_500_pre_1_iters_80_N_0.1_opta_ei.npy'
     location7 = '/home/kaw/Dokumente/Thesis/results/DMJEI_runs_500_pre_1_iters_80_N_0.2_ei.npy'
+    location8 = '/home/kaw/Dokumente/Thesis/results/DMJEI_runs_500_pre_1_iters_80_N_0.1_ei.npy'
     BADMJEI = np.load(location)
     BAMGP = np.load(location2)
     MGP = np.load(location3)
@@ -55,6 +59,7 @@ def load_ei():
     BAMGP_opta = np.load(location5)
     BADMJEI_opta = np.load(location6)
     DMJEI = np.load(location7)
+    DMJEI2 = np.load(location8)
     convs = {'BADMJEI':BADMJEI}
     convs.update({'BAMGP': BAMGP})
     convs.update({'MGP': MGP})
@@ -62,6 +67,7 @@ def load_ei():
     convs.update({'BMGPA_opta': BAMGP_opta})
     convs.update({'BADMJEI_opta':BADMJEI_opta})
     convs.update({'DMJEI': DMJEI})
+    convs.update({'DMJEI2': DMJEI2})
     return convs
 def add_plot_ei(data, title, color, show_var = True):
     n,m = np.shape(data)
@@ -93,6 +99,7 @@ add_plot(convs['TSMGP'], 'TSMGP', 'black', plot_var)
 add_plot(convs['BAMGP_opt'], 'BAMGP_op', 'purple', plot_var)
 # add_plot(convs['BADMJEI_op'], 'BADMJEI_op', 'yellow', plot_var)
 add_plot(convs['DMJEI'], 'DMJEI_N=5', 'mediumturquoise', plot_var)
+add_plot(convs['DMJEI2'], 'DMJEI_N=10', 'brown', plot_var)
 py.legend()
 py.xlabel('Iterations')
 py.ylabel(r'log $|\Delta \frac{\pi}{10}|$')
@@ -107,6 +114,7 @@ add_plot_ei(convs['TSMGP'], 'TSMGP', 'black', plot_var)
 add_plot_ei(convs['BMGPA_opta'], 'BMGPA_op', 'purple', plot_var)
 # add_plot_ei(convs['BADMJEI_opta'], 'BADMJEI_op', 'green', plot_var)
 add_plot_ei(convs['DMJEI'], 'DMJEI_N=5', 'mediumturquoise', plot_var)
+add_plot_ei(convs['DMJEI2'], 'DMJEI_N=10', 'brown', plot_var)
 #py.legend(bbox_to_anchor=(0.62, 0.28))
 py.xlabel('Iterations')
 py.ylabel('log EI')
