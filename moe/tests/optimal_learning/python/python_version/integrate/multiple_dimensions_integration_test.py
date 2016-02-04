@@ -6,6 +6,7 @@ import pytest
 import matplotlib.pyplot as plt
 from multiprocessing import Process, Pool
 
+from moe.optimal_learning.python.cpp_wrappers.log_likelihood import GaussianProcessLogMarginalLikelihood
 from moe.optimal_learning.python.python_version.integrated_gaussian_process import IntegratedGaussianProcess
 from moe.optimal_learning.python.data_containers import HistoricalData, SamplePoint
 from moe.optimal_learning.python.geometry_utils import ClosedInterval
@@ -17,7 +18,8 @@ from moe.optimal_learning.python.python_version.optimization import GradientDesc
     multistart_optimize, LBFGSBOptimizer, LBFGSBParameters
 from moe.optimal_learning.python.repeated_domain import RepeatedDomain
 from moe.tests.optimal_learning.python.gaussian_process_test_case import GaussianProcessTestCase
-from moe.optimal_learning.python.python_version.log_likelihood import GaussianProcessLogMarginalLikelihood, multistart_hyperparameter_optimization
+from moe.optimal_learning.python.python_version.log_likelihood import multistart_hyperparameter_optimization
+from os.path import expanduser
 
 
 class TestExpectedImprovement(GaussianProcessTestCase):
@@ -97,7 +99,8 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             self.results = self.time_stationary_ego(*args)
             res = numpy.asarray(self.results)
             print(res)
-            location = '/home/maxweule/Documents/Thesis/results/results_sigma_' +str(dsimgma) + '_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations)
+            home = expanduser("~")
+            location = home + '/Documents/Thesis/results/results_sigma_' +str(dsimgma) + '_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations)
             numpy.save(location, res)
             print('Results where saved to: ' + location)
             #print(res)
@@ -130,7 +133,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         return theta, repeated_domain,iterations,data, params, lbfgs_parameters, num_multistarts, i, sigma_2, plot
 
     def get_fixed_hyperparams(self, low1, high1, low2,high2):
-        points_for_fitting = self.get_starting_points(750, low1, high1, low2,high2)
+        points_for_fitting = self.get_starting_points(1000, low1, high1, low2,high2)
         data = HistoricalData(3, points_for_fitting)
         theta = self.fit_hyperparameters(data)
         return theta
@@ -179,8 +182,8 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         cov = SquareExponential(theta)
         print(data)
         gaussian_process = IntegratedGaussianProcess(cov, data, *params)
-        ts1 = numpy.random.uniform(low[0],high[0],2)
-        ts2 = numpy.random.uniform(low[0],high[0],2)
+        ts1 = numpy.random.uniform(low[0],high[0],10)
+        ts2 = numpy.random.uniform(low[0],high[0],10)
         ts = [ts1,ts2]
         pers = self.cartesian([ts1,ts2])
         print(ts)
@@ -190,7 +193,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             cora_ei_eval = ExpectedImprovement(gaussian_process, T=ts)
             ei_optimizer = LBFGSBOptimizer(repeated_domain, cora_ei_eval, lbfgs_parameters)
             best_point, function_argument_list, starts = self.multistart_expected_improvement_optimization(ei_optimizer, num_multistarts)
-            best_point[0,1:] = pers[i%4]#random time corresponds to rl testcase
+            best_point[0,1:] = pers[numpy.random.randint(0,100)]#random time corresponds to rl testcase
             #evaluate point
             data = self.append_evaluation(data, best_point, self.noiselvl)
             #fit new gaussian process to data
@@ -384,7 +387,8 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         plt.xlim((lowx,highx))
         ax3.plot(x, -1*(numpy.sin(x*5) + 1.))
         plt.title("$Hyperparams:$" +" "+"$\sigma_f= $" + "$"+'%.2f' % hyperparams[0] +"$"+ " $,l_1=$"+ "$" +'%.2f' % hyperparams[1] + "$"+ " $,l_2=$" + "$"+'%.2f' % hyperparams[2]+ "$")
-        plt.savefig('/home/maxweule/Documents/Thesis/plots/iters/' + str(iter) + '.png')
+        home = expanduser("~")
+        plt.savefig(home +'/Documents/Thesis/plots/iters/' + str(iter) + '.png')
         plt.close()
 
     def get_optimum(self,gp, n_starts = 4):

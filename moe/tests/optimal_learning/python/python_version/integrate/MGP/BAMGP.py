@@ -79,26 +79,26 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             numpy.random.seed(numpy.random.randint(1,9999))
             print("Here")
             self.noiselvl = 0.3 + dsimgman
-            theta_0 = self.get_fixed_hyperparams(low,high) #[0.38017245, 0.218004, 0.26342635]
+            theta_0 = [0.38017245, 0.218004, 0.26342635]
             #number of ego iterations
             iterations = 150
-            nr_threads = 8
-            runs = 500
+            nr_threads = 1
+            runs = 1
             pre_samples = 1
             plot = False
             pool = Pool(nr_threads)
             self.results = list()
             self.ei = list()
 
-            [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta_0, dsimgman, pre_samples, plot), callback=self.collect_results) for x in range(runs)]
-            pool.close()
-            pool.join()
-            # args = self.get_args(1, iterations, theta_0, dsimgman, pre_samples, plot)
-            # res, ei = self.time_stationary_ego(*args)
+            # [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta_0, dsimgman, pre_samples, plot), callback=self.collect_results) for x in range(runs)]
+            # pool.close()
+            # pool.join()
+            args = self.get_args(1, iterations, theta_0, dsimgman, pre_samples, plot)
+            res, ei = self.time_stationary_ego(*args)
             res = numpy.asarray(self.results)
             ei = numpy.asarray(self.ei)
             home = expanduser("~")
-            location = home+'/results/BAMGP_greed_20_sigma_n_'+str(dsimgman)+'_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations)
+            location = home+'/Documents/Thesis/results/BAMGP_greed_20_sigma_n_'+str(dsimgman)+'_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations)
             numpy.save(location, res)
             numpy.save(location +'_ei', ei)
             numpy.save(location +'hyper', theta_0)
@@ -321,7 +321,8 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         plt.xlim((lowx,highx))
         ax3.plot(x, -1*(numpy.sin(x*5) + 1.))
         plt.title("$Hyperparams:$" +" "+"$\sigma_f= $" + "$"+'%.2f' % hyperparams[0] +"$"+ " $,l_1=$"+ "$" +'%.2f' % hyperparams[1] + "$"+ " $,l_2=$" + "$"+'%.2f' % hyperparams[2]+ "$")
-        plt.savefig('/home/maxweule/Documents/Thesis/plots/iters/' + str(iter) + '.png')
+        home = expanduser("~")
+        plt.savefig(home +'/Documents/Thesis/plots/iters/' + str(iter) + '.png')
         plt.close()
 
     def get_optimum(self,gp, n_starts = 4):

@@ -1,12 +1,14 @@
 import numpy as np
 import pylab as py
+from os.path import expanduser
 
 def load():
-    location = '/home/maxweule/Documents/Thesis/results/BAMGP2_runs_500_pre_1_iters_150_opta.npy'
-    location4 = '/home/maxweule/Documents/Thesis/results/BAMGP_Uni_40_runs_500_pre_1_iters_150_opta.npy'
-    location2 = '/home/maxweule/Documents/Thesis/results/TSMGP_runs_500_pre_1_iters_150.npy'
-    location3 = '/home/maxweule/Documents/Thesis/results/MGP2_Uni_40_runs_500_pre_1_iters_150.npy'
-    location5 = '/home/maxweule/Documents/Thesis/results/BAMGP_greed_20_runs_500_pre_1_iters_150_opta.npy'
+    home = expanduser("~")
+    location =  home +'/Documents/Thesis/results/BAMGP2_runs_500_pre_1_iters_150_opta.npy'
+    location4 = home +'/Documents/Thesis/results/BAMGP_Uni_40_runs_500_pre_1_iters_150_opta.npy'
+    location2 = home +'/Documents/Thesis/results/TSMGP_runs_500_pre_1_iters_150.npy'
+    location3 = home +'/Documents/Thesis/results/MGP2_Uni_40_runs_500_pre_1_iters_150.npy'
+    location5 = home +'/Documents/Thesis/results/BAMGP_greed_20_runs_500_pre_1_iters_150_opta.npy'
     BAMGP = np.load(location)
     TSMGP = np.load(location2)
     MGP = np.load(location3)
@@ -35,11 +37,12 @@ def add_plot(data, title, color, show_var = True):
         raise ValueError('n, m are wrong: n = ' + str(n) + ' ,m = '+str(m))
 
 def load_ei():
-    location = '/home/maxweule/Documents/Thesis/results/BAMGP2_runs_500_pre_1_iters_150_opta_ei.npy'
-    location2 = '/home/maxweule/Documents/Thesis/results/TSMGP_runs_500_pre_1_iters_150_ei.npy'
-    location3 = '/home/maxweule/Documents/Thesis/results/MGP2_Uni_40_runs_500_pre_1_iters_150_ei.npy'
-    location4 = '/home/maxweule/Documents/Thesis/results/BAMGP_Uni_40_runs_500_pre_1_iters_150_opta_ei.npy'
-    location5 = '/home/maxweule/Documents/Thesis/results/BAMGP_greed_20_runs_500_pre_1_iters_150_opta_ei.npy'
+    home = expanduser("~")
+    location = home +'/Documents/Thesis/results/BAMGP2_runs_500_pre_1_iters_150_opta_ei.npy'
+    location2 = home +'/Documents/Thesis/results/TSMGP_runs_500_pre_1_iters_150_ei.npy'
+    location3 = home +'/Documents/Thesis/results/MGP2_Uni_40_runs_500_pre_1_iters_150_ei.npy'
+    location4 = home +'/Documents/Thesis/results/BAMGP_Uni_40_runs_500_pre_1_iters_150_opta_ei.npy'
+    location5 = home +'/Documents/Thesis/results/BAMGP_greed_20_runs_500_pre_1_iters_150_opta_ei.npy'
     BAMGP = np.load(location)
     TSMGP = np.load(location2)
     MGP = np.load(location3)

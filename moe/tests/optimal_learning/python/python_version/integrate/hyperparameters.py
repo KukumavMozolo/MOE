@@ -18,6 +18,7 @@ from moe.optimal_learning.python.python_version.optimization import GradientDesc
 from moe.optimal_learning.python.repeated_domain import RepeatedDomain
 from moe.tests.optimal_learning.python.gaussian_process_test_case import GaussianProcessTestCase
 from moe.optimal_learning.python.python_version.log_likelihood import GaussianProcessLogMarginalLikelihood, multistart_hyperparameter_optimization
+from os.path import expanduser
 
 
 class TestExpectedImprovement(GaussianProcessTestCase):
@@ -76,7 +77,8 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         self.noiselvl = 0.3
         theta = self.get_fixed_hyperparams(low, high)
         print(theta)
-        location = '/home/maxweule/Documents/Thesis/results/hyperparameters_noise_' +str(self.noiselvl)
+        home = expanduser("~")
+        location = home +'/Documents/Thesis/results/hyperparameters_noise_' +str(self.noiselvl)
         numpy.save(location, theta)
         assert(True)
 

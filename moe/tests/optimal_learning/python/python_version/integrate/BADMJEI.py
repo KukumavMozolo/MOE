@@ -19,6 +19,7 @@ from moe.optimal_learning.python.python_version.optimization import GradientDesc
 from moe.optimal_learning.python.repeated_domain import RepeatedDomain
 from moe.tests.optimal_learning.python.gaussian_process_test_case import GaussianProcessTestCase
 from moe.optimal_learning.python.python_version.log_likelihood import GaussianProcessLogMarginalLikelihood, multistart_hyperparameter_optimization
+from os.path import expanduser
 
 
 class TestExpectedImprovement(GaussianProcessTestCase):
@@ -96,7 +97,8 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             # res, ei = self.time_stationary_ego(*args)
             res = numpy.asarray(self.results)
             ei = numpy.asarray(self.ei)
-            location = '/home/kaw/Dokumente/Thesis/results/BADMJEI_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations) + '_N_' + str(N) +'_opta'
+            home = expanduser("~")
+            location = home + '/Dokumente/Thesis/results/BADMJEI_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations) + '_N_' + str(N) +'_opta'
             numpy.save(location, res)
             numpy.save(location +'_ei', ei)
             print('Results where saved to: ' + location)
@@ -319,7 +321,8 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         plt.xlim((lowx,highx))
         ax3.plot(x, -1*(numpy.sin(x*5) + 1.))
         plt.title("$Hyperparams:$" +" "+"$\sigma_f= $" + "$"+'%.2f' % hyperparams[0] +"$"+ " $,l_1=$"+ "$" +'%.2f' % hyperparams[1] + "$"+ " $,l_2=$" + "$"+'%.2f' % hyperparams[2]+ "$")
-        plt.savefig('/home/kaw/Dokumente/Thesis/plots/iters/' + str(iter) + '.png')
+        home = expanduser("~")
+        plt.savefig(home + '/Dokumente/Thesis/plots/iters/' + str(iter) + '.png')
         plt.close()
 
     def get_optimum(self,gp, n_starts = 4):
