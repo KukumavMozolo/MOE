@@ -76,7 +76,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         self.noiselvl = 0.3
         theta = self.get_fixed_hyperparams(low, high)
         print(theta)
-        location = '/home/kaw/Dokumente/Thesis/results/hyperparameters_noise_' +str(self.noiselvl)
+        location = '/home/maxweule/Documents/Thesis/results/hyperparameters_noise_' +str(self.noiselvl)
         numpy.save(location, theta)
         assert(True)
 
@@ -129,16 +129,13 @@ class TestExpectedImprovement(GaussianProcessTestCase):
     def func2(self, a, b, n):
         def x(a,b):
             return  numpy.sin(a*5)
-
         def y(a,b):
-            tmp = numpy.copy(a)
-            if(a >0):
-                return 0.5*numpy.exp(-(b)**2)
+
+            if(a >0 and b >0):
+                return numpy.sin(b*5) +0.5*numpy.exp(-(b-numpy.pi/10.0)**2)
             else:
                 return numpy.sin(b*5)
 
-        e = numpy.random.normal(0, 1, (n,n))
-        #return np.sin(a*5) * np.exp(-(b)**2) + 1.0 #+ e
         return x(a,b)*y(a,b)  + numpy.random.normal(0, self.noiselvl)
 
 

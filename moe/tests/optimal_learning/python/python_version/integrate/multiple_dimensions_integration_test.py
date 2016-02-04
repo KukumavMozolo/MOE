@@ -71,21 +71,23 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             cls.assert_vector_within_relative(left_grad_ei, -right_grad_ei, 0.0)
 
     def test_time_stationary_ego_plot(self):
-        high = 0.6
-        low = -0.5
+        high = -3.0
+        low = 3.0
         self.noiselvl = 0.3
-        theta_0 = self.get_fixed_hyperparams(low, high)
+        print('Multiple Diemsion Integration Test')
+        theta_0 = self.get_fixed_hyperparams(low, high, low, high)
+        print(theta_0)
         for dsimgma in [0.0]:
             numpy.random.seed(numpy.random.randint(1,9999))
             print("Here")
             #number of ego iterations
             iterations = 200
-            nr_threads = 4
+            nr_threads = 1
             runs = 1
-            pre_samples = 5
+            pre_samples = 1
             theta = numpy.copy(theta_0)
             plot = True
-            pool = Pool(nr_threads)
+            #pool = Pool(nr_threads)
             self.results = list()
 
             # [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta, dsimgma, pre_samples, plot), callback=self.collect_results) for x in range(runs)]
@@ -95,7 +97,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             self.results = self.time_stationary_ego(*args)
             res = numpy.asarray(self.results)
             print(res)
-            location = '/home/kaw/Dokumente/Thesis/results/results_sigma_' +str(dsimgma) + '_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations)
+            location = '/home/maxweule/Documents/Thesis/results/results_sigma_' +str(dsimgma) + '_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations)
             numpy.save(location, res)
             print('Results where saved to: ' + location)
             #print(res)
@@ -109,25 +111,27 @@ class TestExpectedImprovement(GaussianProcessTestCase):
     def get_args(self, i, iterations, theta, sigma_2 = 0, pre_samples = 10, plot = False):
         num_multistarts = 4
         #define integral bounds ove time
-        high = 0.6
-        low = -0.5
+        high1 = 3.0
+        low1 = -3.0
+        high2= 3.0
+        low2 = -3.0
         # Expand the domain so that we are definitely not doing constrained optimization
-        expanded_domain = TensorProductDomain([ClosedInterval(-0.5, 0.7), ClosedInterval(low, high)])
+        expanded_domain = TensorProductDomain([ClosedInterval(low1, high1), ClosedInterval(low2, high2), ClosedInterval(low1, high1)])
         num_to_sample = 1
         repeated_domain = RepeatedDomain(num_to_sample, expanded_domain)
         #variable that holds all parameters to create integrated gaussian process
-        params = [[1], [low],  [high]]
+        params = [[1,2], [low1,low2],  [high1,high2]]
         #number of ego iterations
         # get gradient descent and lbfgs parameters
         _, lbfgs_parameters = self.get_params()
 
-        points = self.get_starting_points(pre_samples, low, high)
-        data = HistoricalData(2, points)
+        points = self.get_starting_points(pre_samples, low1, high1, low2,high2)
+        data = HistoricalData(3, points)
         return theta, repeated_domain,iterations,data, params, lbfgs_parameters, num_multistarts, i, sigma_2, plot
 
-    def get_fixed_hyperparams(self, low, high):
-        points_for_fitting = self.get_starting_points(20, low, high)
-        data = HistoricalData(2, points_for_fitting)
+    def get_fixed_hyperparams(self, low1, high1, low2,high2):
+        points_for_fitting = self.get_starting_points(750, low1, high1, low2,high2)
+        data = HistoricalData(3, points_for_fitting)
         theta = self.fit_hyperparameters(data)
         return theta
     def get_params(self):
@@ -170,12 +174,15 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         low = params[1]
         high = params[2]
         # theta = self.fit_hyperparameters(data)
-        theta = numpy.array([0.69684542,  0.36259494,  0.38517388 ])
         theta[2] += sigma_2
         print(theta)
         cov = SquareExponential(theta)
+        print(data)
         gaussian_process = IntegratedGaussianProcess(cov, data, *params)
-        ts = numpy.random.uniform(low,high,20)
+        ts1 = numpy.random.uniform(low[0],high[0],2)
+        ts2 = numpy.random.uniform(low[0],high[0],2)
+        ts = [ts1,ts2]
+        pers = self.cartesian([ts1,ts2])
         print(ts)
         for i in range(iterations):
             print('Thread: '+ str( threadid) + ' at : ' + str(100*i/iterations) + '%')
@@ -183,7 +190,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             cora_ei_eval = ExpectedImprovement(gaussian_process, T=ts)
             ei_optimizer = LBFGSBOptimizer(repeated_domain, cora_ei_eval, lbfgs_parameters)
             best_point, function_argument_list, starts = self.multistart_expected_improvement_optimization(ei_optimizer, num_multistarts)
-            best_point[:,1] = ts[i%20]#random time corresponds to rl testcase
+            best_point[0,1:] = pers[i%4]#random time corresponds to rl testcase
             #evaluate point
             data = self.append_evaluation(data, best_point, self.noiselvl)
             #fit new gaussian process to data
@@ -199,10 +206,60 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             res[i]= best_gp_mean[0]
         return res
 
+    def cartesian(self,arrays, out=None):
+            """
+            Generate a cartesian product of input arrays.
+
+            Parameters
+            ----------
+            arrays : list of array-like
+                1-D arrays to form the cartesian product of.
+            out : ndarray
+                Array to place the cartesian product in.
+
+            Returns
+            -------
+            out : ndarray
+                2-D array of shape (M, len(arrays)) containing cartesian products
+                formed of input arrays.
+
+            Examples
+            --------
+            >>> cartesian(([1, 2, 3], [4, 5], [6, 7]))
+            array([[1, 4, 6],
+                   [1, 4, 7],
+                   [1, 5, 6],
+                   [1, 5, 7],
+                   [2, 4, 6],
+                   [2, 4, 7],
+                   [2, 5, 6],
+                   [2, 5, 7],
+                   [3, 4, 6],
+                   [3, 4, 7],
+                   [3, 5, 6],
+                   [3, 5, 7]])
+
+            """
+
+            arrays = [numpy.asarray(x) for x in arrays]
+            dtype = arrays[0].dtype
+
+            n = numpy.prod([x.size for x in arrays])
+            if out is None:
+                out = numpy.zeros([n, len(arrays)], dtype=dtype)
+
+            m = n / arrays[0].size
+            out[:,0] = numpy.repeat(arrays[0], m)
+            if arrays[1:]:
+                self.cartesian(arrays[1:], out=out[0:m,1:])
+                for j in xrange(1, arrays[0].size):
+                    out[j*m:(j+1)*m,1:] = out[0:m,1:]
+            return out
+
 
     def fit_hyperparameters(self, data):
 
-        lml = GaussianProcessLogMarginalLikelihood(SquareExponential(numpy.array([0.1, 0.1, 0.1])), data)
+        lml = GaussianProcessLogMarginalLikelihood(SquareExponential(numpy.array([0.1, 0.1, 0.1, 0.1])), data)
 
         max_num_steps = 400  # this is generally *too few* steps; we configure it this way so the test will run quickly
         max_num_restarts = 10
@@ -220,14 +277,19 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             max_relative_change,
             tolerance,
         )
-        domain = TensorProductDomain([ClosedInterval(0.1, 6.0), ClosedInterval(0.1, 2.2), ClosedInterval(0.1, 2.2)])
+        domain = TensorProductDomain([ClosedInterval(0.1, 6.0), ClosedInterval(0.1, 2.2), ClosedInterval(0.1, 2.2), ClosedInterval(0.1, 2.2)])
         hyperOptimizer = GradientDescentOptimizer(domain, lml, gd_parameters)
         best_hyperparameters = multistart_hyperparameter_optimization(hyperOptimizer, 1)
         return best_hyperparameters
 
     def function_to_minimize(self, point):
-        return -1*self.get_ctrsinshift(point[0], point[1])
+        return -1*self.get_4dfunction(point)
 
+    def get_4dfunction(self, point):
+        if isinstance(point, list):
+            point = numpy.asarray(point)
+        res = numpy.exp(-0.5*numpy.dot(point,numpy.transpose(point))) + numpy.random.normal(0, self.noiselvl)  -0.170226193759
+        return res
     def get_ctrsinshift(self, alpha, time):
         '''
         ctr model depending on hyperparameter and sinus of time
@@ -263,19 +325,20 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         points.append_historical_data(new_point, self.function_to_minimize(new_point[0]), var)
         return points
 
-    def get_starting_points(self, n, low, high):
+    def get_starting_points(self, n, low1, high1, low2, high2):
         points = list()
         for i in range(n):
-            x = numpy.random.uniform(-0.5, 0.7)
-            y = numpy.random.uniform(low, high)
-            points.append(SamplePoint(numpy.array([x, y]), self.function_to_minimize([x, y]), self.noiselvl))
+            x = numpy.random.uniform(low1, high1)
+            y = numpy.random.uniform(low2, high2)
+            z = numpy.random.uniform(low2, high2)
+            points.append(SamplePoint(numpy.array([x, y,z]), self.function_to_minimize([x, y,z]), self.noiselvl))
         return points
 
     def multistart_expected_improvement_optimization(self,
         ei_optimizer, num_multistarts):
-        x_tmp = numpy.zeros((num_multistarts,2))
+        x_tmp = numpy.zeros((num_multistarts,3))
         #x = numpy.linspace(-1.95, 1.95, num_multistarts)
-        x = numpy.random.uniform(-0.5, 0.6, size=(1,num_multistarts))
+        x = numpy.random.uniform(-3.0, 3.0, size=(1,num_multistarts))
         x_tmp[:,0] = x
         best_point, random_starts_values, function_argument_list = multistart_optimize(ei_optimizer, starting_points=x_tmp)
         return best_point, function_argument_list, x_tmp[:,0]
@@ -292,7 +355,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         x = numpy.linspace(lowx, highx, n)
         lowx = lowx-0.1
         highx = highx+0.1
-        x_tmp = numpy.zeros((n,2))
+        x_tmp = numpy.zeros((n,3))
         x_tmp[:,0] = x
         y = gaussian_process.compute_mean_of_points(x_tmp)
         var = gaussian_process.compute_variance_of_points(x_tmp)
@@ -307,7 +370,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         ax1.plot(x, var, color='red')
         ax1.scatter(best_gp_mean[0], best_gp_mean[1], color = 'black')
         ep = expected_improvement.evaluate_at_point_list(x_tmp)
-        plt.ylim((-3,3))
+        plt.ylim((-5,5))
         plt.xlim((lowx,highx))
         ax2 = fig.add_subplot(3,1,2)
         ax2.plot(x, ep, color = 'black')
@@ -321,7 +384,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         plt.xlim((lowx,highx))
         ax3.plot(x, -1*(numpy.sin(x*5) + 1.))
         plt.title("$Hyperparams:$" +" "+"$\sigma_f= $" + "$"+'%.2f' % hyperparams[0] +"$"+ " $,l_1=$"+ "$" +'%.2f' % hyperparams[1] + "$"+ " $,l_2=$" + "$"+'%.2f' % hyperparams[2]+ "$")
-        plt.savefig('/home/kaw/Dokumente/Thesis/plots/iters/' + str(iter) + '.png')
+        plt.savefig('/home/maxweule/Documents/Thesis/plots/iters/' + str(iter) + '.png')
         plt.close()
 
     def get_optimum(self,gp, n_starts = 4):
@@ -340,14 +403,14 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             epsilon
         )
         optimizable_gp = OptimizableGaussianProcess(gp)
-        expanded_domain = TensorProductDomain([ClosedInterval(-0.5, 0.7), ClosedInterval(-0.5, 0.7)])
+        expanded_domain = TensorProductDomain([ClosedInterval(-3.0, 3.0), ClosedInterval(-3.0, 3.0), ClosedInterval(-3.0, 3.0)])
         gp_optimizer = LBFGSBOptimizer(expanded_domain, optimizable_gp, lbfgs_parameters)
         #use allways same starting position here, assuming optimum is known
-        x = numpy.linspace(-0.5, 0.6, n_starts)
-        x_tmp = numpy.zeros((n_starts,2))
+        x = numpy.linspace(-3.0, 3.0, n_starts)
+        x_tmp = numpy.zeros((n_starts,3))
         x_tmp[:,0] = x
         best_point, random_starts_values, function_argument_list = multistart_optimize(gp_optimizer, starting_points=x_tmp, num_multistarts = n_starts)
-        best_point[1] = 0
+        best_point[1:] = 0
         return best_point
 
 
