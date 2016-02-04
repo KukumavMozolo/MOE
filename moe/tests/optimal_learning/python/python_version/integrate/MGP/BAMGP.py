@@ -83,7 +83,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             #number of ego iterations
             iterations = 150
             nr_threads = 8
-            runs = 500
+            runs = 1
             pre_samples = 1
             plot = False
             pool = Pool(nr_threads)
