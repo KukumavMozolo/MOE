@@ -129,7 +129,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         return theta, repeated_domain,iterations,data, params, lbfgs_parameters, num_multistarts, i, sigma_2, plot
 
     def get_fixed_hyperparams(self, low, high):
-        points_for_fitting = self.get_starting_points(1000, low, high)
+        points_for_fitting = self.get_starting_points(10, low, high)
         data = HistoricalData(2, points_for_fitting)
         theta = self.fit_hyperparameters(data)
         return theta
