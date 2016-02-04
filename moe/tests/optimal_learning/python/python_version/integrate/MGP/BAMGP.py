@@ -6,6 +6,7 @@ import pytest
 import matplotlib.pyplot as plt
 from multiprocessing import Process, Pool
 
+from moe.optimal_learning.python.cpp_wrappers.log_likelihood import GaussianProcessLogMarginalLikelihood
 from moe.optimal_learning.python.python_version.integrated_gaussian_process import IntegratedGaussianProcess
 from moe.optimal_learning.python.data_containers import HistoricalData, SamplePoint
 from moe.optimal_learning.python.geometry_utils import ClosedInterval
@@ -17,7 +18,7 @@ from moe.optimal_learning.python.python_version.optimization import GradientDesc
     multistart_optimize, LBFGSBOptimizer, LBFGSBParameters
 from moe.optimal_learning.python.repeated_domain import RepeatedDomain
 from moe.tests.optimal_learning.python.gaussian_process_test_case import GaussianProcessTestCase
-from moe.optimal_learning.python.python_version.log_likelihood import GaussianProcessLogMarginalLikelihood, multistart_hyperparameter_optimization
+from moe.optimal_learning.python.python_version.log_likelihood import multistart_hyperparameter_optimization
 
 
 class TestExpectedImprovement(GaussianProcessTestCase):
@@ -73,31 +74,32 @@ class TestExpectedImprovement(GaussianProcessTestCase):
     def test_time_stationary_ego_plot(self):
         high = 0.6
         low = -0.5
-        self.noiselvl = 0.3
-        theta_0 = [ 0.12837005,  0.2854727,   0.30107687]
-        for dsimgma in [0.0]:
+        for dsimgman in [0.0, 0.01, 0.2, 0.3, 0.4]:
             numpy.random.seed(numpy.random.randint(1,9999))
             print("Here")
+            self.noiselvl = 0.3 + dsimgman
+            theta_0 = self.get_fixed_hyperparams(low,high) #[0.38017245, 0.218004, 0.26342635]
             #number of ego iterations
             iterations = 150
-            nr_threads = 4
-            runs = 500
+            nr_threads = 1
+            runs = 1
             pre_samples = 1
             plot = False
-            pool = Pool(nr_threads)
+            # pool = Pool(nr_threads)
             self.results = list()
             self.ei = list()
 
-            [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta_0, dsimgma, pre_samples, plot), callback=self.collect_results) for x in range(runs)]
-            pool.close()
-            pool.join()
-            # args = self.get_args(1, iterations, theta_0, dsimgma, pre_samples, plot)
-            # res, ei = self.time_stationary_ego(*args)
+            # [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta_0, dsimgman, pre_samples, plot), callback=self.collect_results) for x in range(runs)]
+            # pool.close()
+            # pool.join()
+            args = self.get_args(1, iterations, theta_0, dsimgman, pre_samples, plot)
+            res, ei = self.time_stationary_ego(*args)
             res = numpy.asarray(self.results)
             ei = numpy.asarray(self.ei)
-            location = '/home/kaw/Dokumente/Thesis/results/BAMGP_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations) +'_opta'
+            location = '/home/maxweule/Documents/Thesis/results/BAMGP_greed_20_sigma_n_'+str(dsimgman)+'_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations)
             numpy.save(location, res)
             numpy.save(location +'_ei', ei)
+            numpy.save(location +'hyper', theta_0)
             print('Results where saved to: ' + location)
 
         assert(True)
@@ -115,7 +117,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         num_to_sample = 1
         repeated_domain = RepeatedDomain(num_to_sample, expanded_domain)
         #variable that holds all parameters to create integrated gaussian process
-        params = [1, low,  high]
+        params = [[1], [low],  [high]]
         #number of ego iterations
         # get gradient descent and lbfgs parameters
         _, lbfgs_parameters = self.get_params()
@@ -125,7 +127,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         return theta, repeated_domain,iterations,data, params, lbfgs_parameters, num_multistarts, i, sigma_2, plot
 
     def get_fixed_hyperparams(self, low, high):
-        points_for_fitting = self.get_starting_points(20, low, high)
+        points_for_fitting = self.get_starting_points(1000, low, high)
         data = HistoricalData(2, points_for_fitting)
         theta = self.fit_hyperparameters(data)
         return theta
@@ -149,14 +151,15 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         approx_grad = False
         max_func_evals = 15000
         max_metric_correc = 10
-        pgtol = 1.0e-8
+        pgtol = 1.0e-24
         epsilon = 1.0e-8
+        factr = 1
 
         lbfgs_parameters = LBFGSBParameters(
             approx_grad,
             max_func_evals,
             max_metric_correc,
-            tolerance,
+            factr,
             pgtol,
             epsilon
         )
@@ -173,7 +176,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         print(theta)
         cov = SquareExponential(theta)
         gaussian_process = IntegratedGaussianProcess(cov, data, *params)
-        ts = numpy.random.uniform(low,high,20)
+        ts = numpy.random.uniform(low[0],high[0],20)
         print(ts)
         print(iterations)
         for i in range(iterations):
@@ -195,7 +198,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             function_vals = data.points_sampled_value
             if(plot == True):
                 print("plotting")
-                self.plot_estimate(i, low, high, gaussian_process, cora_ei_eval, points_sampled, function_vals, theta, function_argument_list, starts, best_gp_mean ,threadid)
+                self.plot_estimate(i, low[0], high[0], gaussian_process, cora_ei_eval, points_sampled, function_vals, theta, function_argument_list, starts, best_gp_mean ,threadid)
             res[i]= best_gp_mean[0]
         return [res, ei]
 
@@ -245,14 +248,11 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             return  numpy.sin(a*5)
 
         def y(a,b):
-            tmp = numpy.copy(a)
-            if(a >0):
-                return 0.5*numpy.exp(-(b)**2)
+            if(a >0 and b >0):
+                return numpy.sin(b*5) +0.5*numpy.exp(-(b-numpy.pi/10.0)**2)
             else:
                 return numpy.sin(b*5)
 
-        e = numpy.random.normal(0, 1, (n,n))
-        #return np.sin(a*5) * np.exp(-(b)**2) + 1.0 #+ e
         return x(a,b)*y(a,b)  + numpy.random.normal(0, self.noiselvl)
 
     def append_evaluation(self, points, new_point, var):
@@ -319,7 +319,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         plt.xlim((lowx,highx))
         ax3.plot(x, -1*(numpy.sin(x*5) + 1.))
         plt.title("$Hyperparams:$" +" "+"$\sigma_f= $" + "$"+'%.2f' % hyperparams[0] +"$"+ " $,l_1=$"+ "$" +'%.2f' % hyperparams[1] + "$"+ " $,l_2=$" + "$"+'%.2f' % hyperparams[2]+ "$")
-        plt.savefig('/home/kaw/Dokumente/Thesis/plots/iters/' + str(iter) + '.png')
+        plt.savefig('/home/maxweule/Documents/Thesis/plots/iters/' + str(iter) + '.png')
         plt.close()
 
     def get_optimum(self,gp, n_starts = 4):

@@ -177,9 +177,9 @@ class ExpectedImprovement(ExpectedImprovementInterface, OptimizableInterface):
         self._gaussian_process = gaussian_process
         if gaussian_process._points_sampled_value.size > 0:
             if t!=None:
-                self._best_so_far = gaussian_process._best_so_far_at_t(t)
+                self._best_so_far = gaussian_process.best_so_far_at_t(t)
             elif T!=None:
-                self._best_so_far = gaussian_process._best_average_over(T)
+                self._best_so_far = gaussian_process.best_average_over(T)
             else:
                 self._best_so_far = numpy.amin(gaussian_process._points_sampled_value)
             #self._best_so_far = gaussian_process.get_optimum(gaussian_process)

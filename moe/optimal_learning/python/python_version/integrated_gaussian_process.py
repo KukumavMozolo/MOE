@@ -138,6 +138,47 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         """
         return copy.deepcopy(self._historical_data)
 
+    def _build_marginal_matrix_mean(self):
+
+        def _get_marginal(querry_point_idx, domain_bound_pos, point, covariance):
+            _hyperparameters = covariance.get_hyperparameters()
+            l = numpy.copy(_hyperparameters[querry_point_idx +1])
+            #integrate only over the last index corresponding to the coregressor that should be marginalized
+            #sqrt(pi/2)*L * (erf(\frac{b-x}{\sqrt(2)L} - erf(\frac{a-x}{\sqrt(2)L}
+            normalization1 = numpy.sqrt(numpy.pi/2.0)*l
+            normalization2 = (numpy.sqrt(2.0) * l)
+            high_bound = (self.high[domain_bound_pos] - point[querry_point_idx])/ normalization2
+            high_bound = erf(high_bound)
+            low_bound =  (self.low[domain_bound_pos] - point[querry_point_idx])/ normalization2
+            low_bound = erf(low_bound)
+            diff = high_bound - low_bound
+            return  normalization1 * diff
+
+        marginal_mean_mat = numpy.empty((self._points_sampled.shape[0], 1), order='F')
+        for j, point_one in enumerate(self._points_sampled):
+            marginal = 1.0
+            for pos, idx in enumerate(self.idx):
+                marginal *=_get_marginal(idx,pos, point_one, self._covariance)
+            marginal_mean_mat[j,0] = marginal
+
+        return marginal_mean_mat
+
+    def _build_integrated_term_maxtrix(self, covariance, points_sampled):
+        _hyperparameters = covariance.get_hyperparameters()
+        n = points_sampled.shape[0]
+        c = numpy.ones(shape=(n,n))
+        for pos, idx in enumerate(self.idx):
+            l = numpy.copy(_hyperparameters[idx +1]) # is it the last??
+            diffs = numpy.empty((1, points_sampled.shape[0]), order='F')
+            norm = numpy.sqrt(2.0) * l
+            for i, point_one in enumerate(points_sampled):
+                high_bound = erf((self.high[pos] - point_one[idx])/(norm))
+                low_bound = erf((self.low[pos] - point_one[idx])/(norm))
+                diffs[0,i] = high_bound - low_bound
+        c = numpy.multiply(c, numpy.dot(diffs.T,diffs))
+        return c
+
+
     def _build_precomputed_data(self):
         """Set up precomputed data (cholesky factorization of K and K^-1 * y)."""
         if self.num_sampled == 0:
@@ -153,12 +194,22 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
             C = self._build_integrated_term_maxtrix(self._covariance, self._points_sampled)
             self._K_Inv = numpy.linalg.inv(covariance_matrix)
             self._K_C = numpy.empty((covariance_matrix.shape[0],covariance_matrix.shape[0]))
-            for i in range(covariance_matrix.shape[0]):
-                for j in range(covariance_matrix.shape[0]):
-                     self._K_C[i,j] = C[i,j] * self._K_Inv[i,j]
-
+            self._K_C = numpy.multiply(C, self._K_Inv)
             self._K_chol = scipy.linalg.cho_factor(covariance_matrix, lower=True, overwrite_a=True)
             self._K_inv_y = scipy.linalg.cho_solve(self._K_chol, self._points_sampled_value)
+            self._marginal_mean_mat = self._build_marginal_matrix_mean()
+            self._marginal_mean_mat_gradient = self._build_marginal_matrix_mean_gradient()
+
+    def _get_average(self):
+        r"""Method to normalize the predictive function
+        of the gp such that it is in range of the objective funktion after
+        integrating over one dimension
+        :return:
+        """
+        norm = 1.0
+        for pos, idx in enumerate(self.idx):
+            norm *= (self.high[pos] - self.low[pos])
+        return 1.0/norm
 
     def _compute_mean_of_points(self, points_to_sample):
         r"""Compute the mean of this GP at each of point of ``Xs`` (``points_to_sample``).
@@ -177,13 +228,13 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         if self.num_sampled == 0:
             return numpy.zeros(points_to_sample.shape[0])
 
-        K_star = self._build_integrated_covariance_maxtrix(
+        K_star = self._build_integrated_covariance_maxtrix_mean(
             self._covariance,
             self._points_sampled,
             points_to_sample,
         )
         mu_star = numpy.dot(K_star.T, self._K_inv_y)
-        return mu_star * 1.0/(self.high - self.low)
+        return mu_star * self._get_average()
 
     def get_optimum(self,gp, n_starts = 4):
         approx_grad = False
@@ -213,48 +264,106 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         sqrtvar = numpy.sqrt(var)
         return numpy.amin(random_starts_values) /sqrtvar
 
-    def _best_so_far_at_t(self,t):
-        points_at_t_idx =  numpy.where(self._historical_data.points_sampled[:,self.idx] ==t)
-        if points_at_t_idx[0].size >0:
-            best_at_t = numpy.amin(self._historical_data.points_sampled_value[points_at_t_idx])
+    def best_so_far_at_t(self, t):
+        best_so_far = self._best_so_far_at_t(t)
+        if best_so_far != None:
+            return best_so_far
         else:
-            best_at_t = numpy.amin(self._historical_data.points_sampled_value)
+            return numpy.amin(self._historical_data.points_sampled_value)
+
+    def _best_so_far_at_t(self,t):
+        mask = numpy.empty(numpy.shape(self._historical_data.points_sampled), dtype=bool)
+        mask[:,:] = False
+        # get coinciding idx
+        mask[:,self.idx] = numpy.where(self._historical_data.points_sampled[:,self.idx] == t)
+        #if there is no match
+        if not mask.any():
+            best_at_t = None
+        else:
+            idx_row = numpy.sum(mask, axis = 1)
+            #find best match
+            idx_row = numpy.argmax(idx_row)
+            #apply
+            points_at_t_idx =  idx_row
+            if points_at_t_idx.size >0:
+                best_at_t = numpy.amin(self._historical_data.points_sampled_value[points_at_t_idx])
         return best_at_t
 
-    def _best_average_over(self, T):
+
+    def best_average_over(self, T):
         best_at_t = 0.0
         count = 0
         for t in T:
-            points_at_t_idx =  numpy.where(self._historical_data.points_sampled[:,self.idx] ==t)
+            points_at_t_idx =  numpy.where(self._historical_data.points_sampled[:,self.idx[0]] ==t)
             if points_at_t_idx[0].size >0:
                 best_at_t += numpy.amin(self._historical_data.points_sampled_value[points_at_t_idx])
                 count += 1
         if count == 0:
-            return best_at_t
+            return numpy.amin(self._historical_data.points_sampled_value)#best_at_t
         return best_at_t / float(count)
 
-    def _build_integrated_covariance_maxtrix(self, covariance, points_sampled, points_to_sample):
-        _hyperparameters = covariance.get_hyperparameters()
-        covariance = SquareExponential(numpy.delete(_hyperparameters, self.idx +1, 0))
-        l = numpy.copy(_hyperparameters[self.idx +1]) # is it the last??
-        cov_mat = numpy.empty((points_sampled.shape[0], points_to_sample.shape[0]), order='F')
-        normalization1 = numpy.sqrt(numpy.pi/2.0)*l
-        normalization2 = (numpy.sqrt(2.0) * l)
-        for j, point_two in enumerate(points_to_sample):
-            for i, point_one in enumerate(points_sampled):
-                tmp_point_two = numpy.delete(point_two, self.idx, 0)
-                tmp_point_one = numpy.delete(point_one, self.idx, 0)
-                cov_mat[i, j] = covariance.covariance(tmp_point_one, tmp_point_two)
-                #integrate only over the last index corresponding to the coregressor that should be marginalized
-                #sqrt(pi/2)*L * (erf(\frac{b-x}{\sqrt(2)L} - erf(\frac{a-x}{\sqrt(2)L}
-                high_bound = (self.high - point_one[self.idx])/ normalization2
-                high_bound = erf(high_bound)
-                low_bound =  (self.low - point_one[self.idx])/ normalization2
-                low_bound = erf(low_bound)
-                diff = high_bound - low_bound
-                cov_mat[i, j] = cov_mat[i, j] * normalization1 * diff
-        return cov_mat
-
+    # def best_average_over(self, T):
+    #     def cartesian(arrays, out=None):
+    #         """
+    #         Generate a cartesian product of input arrays.
+    #
+    #         Parameters
+    #         ----------
+    #         arrays : list of array-like
+    #             1-D arrays to form the cartesian product of.
+    #         out : ndarray
+    #             Array to place the cartesian product in.
+    #
+    #         Returns
+    #         -------
+    #         out : ndarray
+    #             2-D array of shape (M, len(arrays)) containing cartesian products
+    #             formed of input arrays.
+    #
+    #         Examples
+    #         --------
+    #         >>> cartesian(([1, 2, 3], [4, 5], [6, 7]))
+    #         array([[1, 4, 6],
+    #                [1, 4, 7],
+    #                [1, 5, 6],
+    #                [1, 5, 7],
+    #                [2, 4, 6],
+    #                [2, 4, 7],
+    #                [2, 5, 6],
+    #                [2, 5, 7],
+    #                [3, 4, 6],
+    #                [3, 4, 7],
+    #                [3, 5, 6],
+    #                [3, 5, 7]])
+    #
+    #         """
+    #
+    #         arrays = [numpy.asarray(x) for x in arrays]
+    #         dtype = arrays[0].dtype
+    #
+    #         n = numpy.prod([x.size for x in arrays])
+    #         if out is None:
+    #             out = numpy.zeros([n, len(arrays)], dtype=dtype)
+    #
+    #         m = n / arrays[0].size
+    #         out[:,0] = numpy.repeat(arrays[0], m)
+    #         if arrays[1:]:
+    #             cartesian(arrays[1:], out=out[0:m,1:])
+    #             for j in xrange(1, arrays[0].size):
+    #                 out[j*m:(j+1)*m,1:] = out[0:m,1:]
+    #         return out
+    #
+    #     perms = cartesian(T)
+    #     best_average = 0.0
+    #     count = 0
+    #     for t in perms:
+    #         best_at_t = self._best_so_far_at_t(t)
+    #         if best_at_t != None:
+    #             count += 1
+    #             best_average += best_at_t
+    #     if count == 0:
+    #         return best_average
+    #     return best_average /float(count)
 
 
     def _compute_grad_mean_of_points(self, points_to_sample, num_derivatives=-1):
@@ -280,63 +389,49 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         :rtype: array of float64 with shape (num_derivatives, dim)
 
         """
+        def compute_integrated_grad_covariance_grad_mean(point_one, point_two, j):
+            r"""gradient = cov(x_{*i}^',x_j^')*\frac{1}{L} * ( x_j - x_*) * \sqrt(pi/2) * (erf(\frac{b-x_{jn}}{\sqrt(2)L}) - erf(\frac{a-x_{jn}}{\sqrt(2)L}))
+            for i < n and for i = t: gradient = 0
+            """
+            idx_shited = [i +1 for i in self.idx]
+            _hyperparameters = self._covariance.get_hyperparameters()
+            covariance = SquareExponential(numpy.delete(_hyperparameters, idx_shited, 0))
+            grad_cov = point_two - point_one
+            tmp_point_two = numpy.delete(point_two, self.idx, 0)
+            tmp_point_one = numpy.delete(point_one, self.idx, 0)
+            grad_cov *= covariance.covariance(tmp_point_one, tmp_point_two) #\sigma_f^2 exp(-\frac{1}{2l^2} |X_{x,i}' - X_{xj}'|^2)
+            grad_cov = grad_cov * self._marginal_mean_mat_gradient[j]
+            grad_cov[self.idx] = 0.0 #gradient for marginal is zero
+            return grad_cov
         num_derivatives = self._clamp_num_derivatives(points_to_sample.shape[0], num_derivatives)
         grad_K_star = numpy.empty((num_derivatives, self._points_sampled.shape[0], self.dim))
         for i, point_one in enumerate(points_to_sample[:num_derivatives, ...]):
             for j, point_two in enumerate(self._points_sampled):
-                grad_K_star[i, j, ...] = self._compute_integrated_grad_covariance(point_one, point_two)
+                grad_K_star[i, j, ...] = compute_integrated_grad_covariance_grad_mean(point_one, point_two, j)
 
         # y_{k,i} = A_{k,j,i} * x_j
         grad_mu_star = numpy.einsum('ijk, j', grad_K_star, self._K_inv_y)
         return grad_mu_star
 
-    def _compute_integrated_grad_covariance(self, point_one, point_two):
-        r"""gradient = cov(x_{*i}^',x_j^')*\frac{1}{L} * ( x_j - x_*) * \sqrt(pi/2) * (erf(\frac{b-x_{jn}}{\sqrt(2)L}) - erf(\frac{a-x_{jn}}{\sqrt(2)L}))
-        for i < n and for i = t: gradient = 0
-        """
-        _hyperparameters = self._covariance.get_hyperparameters()
-        covariance = SquareExponential(numpy.delete(_hyperparameters, self.idx +1, 0))
-        l = numpy.copy(_hyperparameters[self.idx +1]) # is it the last??
-        grad_cov = point_two - point_one
-        tmp_point_two = numpy.delete(point_two, self.idx, 0)
-        tmp_point_one = numpy.delete(point_one, self.idx, 0)
-        grad_cov *= covariance.covariance(tmp_point_one, tmp_point_two) #\sigma_f^2 exp(-\frac{1}{2l^2} |X_{x,i}' - X_{xj}'|^2)
-        normalization = numpy.sqrt(2.0) * l
-        high_bound = (self.high - point_two[self.idx]) / normalization
-        high_bound = erf(high_bound)
-        low_bound = (self.low - point_two[self.idx]) / normalization
-        low_bound = erf(low_bound)
-        diff = high_bound - low_bound
-        grad_cov = grad_cov * diff *numpy.sqrt(numpy.pi/2.)/l
-        grad_cov[self.idx] = 0.0 #gradient for marginal is zero
-        return grad_cov
 
-    def _compute_integrated_grad_covariance2(self, point_one, point_two):
-        _hyperparameters = self._covariance.get_hyperparameters()
-        l = numpy.copy(_hyperparameters[self.idx +1]) # is it the last??
-        diff = point_one - point_two
-        normalisation = numpy.sqrt(2.0) * l
-        higher_bound = (self.high - point_one[self.idx])/normalisation
-        higher_bound = erf(higher_bound)
-        lower_bound = (self.low - point_one[self.idx])/normalisation
-        lower_bound = erf(lower_bound)
-        diff *= (higher_bound - lower_bound)
-        return diff
 
-    def _compute_integrated_grad_covariance3(self, point_one, point_two):
-        _hyperparameters = self._covariance.get_hyperparameters()
-        l = numpy.copy(_hyperparameters[self.idx +1]) # is it the last??
-        covariance = SquareExponential(numpy.delete(_hyperparameters, self.idx +1, 0))
-        diff = point_one - point_two
-        diff[self.idx]=0
-        tmp_point_two = numpy.delete(point_two, self.idx, 0)
-        tmp_point_one = numpy.delete(point_one, self.idx, 0)
-        diff*= covariance.covariance(tmp_point_one,tmp_point_two)
-        return diff
+    def _build_integrated_covariance_maxtrix_mean(self, covariance, points_sampled, points_to_sample):
+        idx_shited = [i +1 for i in self.idx]
+        hyperparameters = covariance.get_hyperparameters()
+        covariance = SquareExponential(numpy.delete(hyperparameters, idx_shited, 0))
+        cov_mat = numpy.empty((points_sampled.shape[0], points_to_sample.shape[0]), order='F')
+        for j, point_two in enumerate(points_to_sample):
+            for i, point_one in enumerate(points_sampled):
+                tmp_point_two = numpy.delete(point_two, self.idx, 0)
+                tmp_point_one = numpy.delete(point_one, self.idx, 0)
+                cov_mat[i, j] = covariance.covariance(tmp_point_one, tmp_point_two)
+                cov_mat[i, j] = cov_mat[i, j] *self._marginal_mean_mat[i,0]
+        return cov_mat
 
-    def _build_integrated_covariance_maxtrix2(self, covariance, points_sampled, points_to_sample):
+    def _build_integrated_covariance_maxtrix_variance(self, covariance, points_sampled, points_to_sample):
         _hyperparameters = covariance.get_hyperparameters()
-        covariance = SquareExponential(numpy.delete(_hyperparameters, self.idx +1, 0))
+        idx_shifted = [i +1 for i in self.idx]
+        covariance = SquareExponential(numpy.delete(_hyperparameters, idx_shifted, 0))
         cov_mat = numpy.empty((points_sampled.shape[0], points_to_sample.shape[0]), order='F')
         for j, point_two in enumerate(points_to_sample):
             for i, point_one in enumerate(points_sampled):
@@ -345,6 +440,35 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
                 cov_mat[i, j] = covariance.covariance(tmp_point_one, tmp_point_two)
         return cov_mat
 
+    def _get_variance_aij_marginal(self):
+        _hyperparameters = self._covariance.get_hyperparameters()
+        marginal = 1.0
+        for pos, idx in enumerate(self.idx):
+            l = numpy.copy(_hyperparameters[idx +1])
+            norm1 = 2.0*l*(numpy.sqrt(numpy.pi/2.0))
+            norm2 = numpy.sqrt(2.0) * l
+            norm3 = numpy.sqrt(2.0/numpy.pi) *l
+            norm4 = 2.0*numpy.power(l,2)
+            diff = (self.high[pos]-self.low[pos])
+            marginal *= norm1* (diff * erf(diff/norm2) + norm3 * (numpy.exp(-numpy.power(diff,2)/norm4) -1.0))
+        return marginal
+
+
+    def _get_variance_bij_marginal(self):
+        _hyperparameters = self._covariance.get_hyperparameters()
+        marginal = 1.0
+        for pos, idx in enumerate(self.idx):
+            l = numpy.copy(_hyperparameters[idx +1])
+            marginal *= numpy.power(l,2)
+        n = len(self.idx)
+        pi_power = numpy.power(numpy.pi, n) / numpy.power(2,n)
+        return marginal * pi_power
+
+    def _get_variance_bij_marginal_gradient(self):
+        _hyperparameters = self._covariance.get_hyperparameters()
+        n = len(self.idx)
+        pi_power = numpy.power(numpy.pi, n) / numpy.power(2,n)
+        return  pi_power
 
     def _compute_variance_of_points(self, points_to_sample):
         r"""Compute the variance (matrix) of this GP at each point of ``Xs`` (``points_to_sample``).
@@ -362,57 +486,30 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         :rtype: array of float64 with shape (num_to_sample, num_to_sample)
 
         """
-        _hyperparameters = self._covariance.get_hyperparameters()
-        sigma_f = _hyperparameters[0]
-        sigma_f_sq =sigma_f * sigma_f
-        l = numpy.copy(_hyperparameters[self.idx +1]) # is it the last??
 
-        covariance = SquareExponential(numpy.delete(_hyperparameters, self.idx +1, 0))
+
+
+        _hyperparameters = self._covariance.get_hyperparameters()
+        del_idx = [idx +1 for idx in self.idx]
+        covariance = SquareExponential(numpy.delete(_hyperparameters, del_idx, 0))
         var_star = numpy.empty((points_to_sample.shape[0],points_to_sample.shape[0]))
-        norm1 = 2*l*(numpy.sqrt(numpy.pi/2.0))
-        norm2 = numpy.sqrt(2.0) * l
-        norm3 = numpy.sqrt(2.0/numpy.pi) *l
-        diff = (self.high-self.low)
-        const = norm1* (diff * erf(diff/norm2) + norm3 * (numpy.exp(-numpy.power(diff,2)/(2.0*numpy.power(l,2))) -1.0))
+        marginal = self._get_variance_aij_marginal()
         for i, point_one in enumerate(points_to_sample):
             for j, point_two in enumerate(points_to_sample):
                 tmp_point_two = numpy.delete(point_two, self.idx, 0)
                 tmp_point_one = numpy.delete(point_one, self.idx, 0)
-                var_star[i,j] = covariance.covariance(tmp_point_one, tmp_point_two) * const
+                var_star[i,j] = covariance.covariance(tmp_point_one, tmp_point_two) * marginal
 
-        K_star = self._build_integrated_covariance_maxtrix2(
+        K_star = self._build_integrated_covariance_maxtrix_variance(
             self._covariance,
             self._points_sampled,
             points_to_sample,
         )
         K_star_K_C_Inv_K_star = numpy.dot(numpy.dot(K_star.T, self._K_C), K_star)
+        tmp = var_star - K_star_K_C_Inv_K_star *self._get_variance_bij_marginal()
+        return tmp * self._get_average()
 
 
-        # V = scipy.linalg.solve_triangular(
-        #     self._K_C_chol[0],
-        #     K_star,
-        #     lower=self._K_C_chol[1],
-        #     overwrite_b=True,
-        # )
-
-        normalization = numpy.power(l,2) * numpy.pi/2.0
-
-        # cheaper to go through scipy.linalg.get_blas_funcs() which can compute A = alpha*B*C + beta*A in one pass
-        # vtv_norm = numpy.dot(V.T, V) * normalization
-        # tmp = var_star - vtv_norm
-        tmp = var_star - K_star_K_C_Inv_K_star * normalization
-        return tmp * 1.0/(self.high - self.low)
-
-    def _build_integrated_term_maxtrix(self, covariance, points_sampled):
-        _hyperparameters = covariance.get_hyperparameters()
-        l = numpy.copy(_hyperparameters[self.idx +1]) # is it the last??
-        diffs = numpy.empty((1, points_sampled.shape[0]), order='F')
-        norm = numpy.sqrt(2.0) * l
-        for i, point_one in enumerate(points_sampled):
-            high_bound = erf((self.high - point_one[self.idx])/(norm))
-            low_bound = erf((self.low - point_one[self.idx])/(norm))
-            diffs[0,i] = high_bound - low_bound
-        return numpy.dot(diffs.T,diffs)
 
     def compute_variance_of_points(self, points_to_sample):
         return self._compute_variance_of_points(points_to_sample)
@@ -446,16 +543,18 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
     def __compute_grad_variance_of_points_per_point(self, points_to_sample, var_of_grad):
         num_to_sample = points_to_sample.shape[0]
         num_sampled = self._points_sampled.shape[0]
+        num_integrated_dimensions = len(self.idx)
+        new_dim = self.dim - num_integrated_dimensions
+        shifted_idx = [i +1 for i in self.idx]
 
         # Compute grad variance
         grad_var = numpy.zeros((num_to_sample, num_to_sample, self.dim))
         hyperparameters = self._covariance.get_hyperparameters()
-        l = numpy.copy(hyperparameters[self.idx +1]) # is it the last??
-        covariance = SquareExponential(numpy.delete(hyperparameters, self.idx +1, 0))
+        covariance = SquareExponential(numpy.delete(hyperparameters, shifted_idx, 0))
         #delete integral dimension
         mask = numpy.ones(self._points_sampled.shape, dtype=bool)
         mask[:, self.idx] = False
-        ps = self._points_sampled[mask].reshape(num_sampled,self.dim-1)
+        ps = self._points_sampled[mask].reshape(num_sampled,new_dim)
         mask2 = numpy.ones(points_to_sample.shape, dtype=bool)
         mask2[:,self.idx] = False
         pt = points_to_sample[mask2]
@@ -463,32 +562,26 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         for i, point_one in enumerate(points_to_sample):
             for j, point_two in enumerate(points_to_sample):
                 if var_of_grad == i and var_of_grad == j:
+                    #a_{ij}
                     tmp_point_two = numpy.delete(point_two, self.idx, 0)
                     tmp_point_one = numpy.delete(point_one, self.idx, 0)
-                    grad_var[i, j, ...] = covariance.covariance(tmp_point_one, tmp_point_two) * self._grad_var(point_one, point_two, l, self.idx)  #the K_star part
-                    #calculating covariance, should happen in covariance class
+                    diff_points = point_two - point_one
+                    diff_points[self.idx] = 0.0
+                    grad_var[i, j, ...] = covariance.covariance(tmp_point_one, tmp_point_two) * self._get_variance_aij_marginal()* diff_points  #the K_star part
+                    #b_{ii}
                     k_xX = pt - ps
                     k_xX = numpy.power(k_xX,2)
-                    k_xX = numpy.divide(k_xX,covariance._lengths_sq).reshape(num_sampled, self.dim-1)
+                    k_xX = numpy.divide(k_xX,covariance._lengths_sq).reshape(num_sampled, new_dim)
                     k_xX = hyperparameters[0] * numpy.exp(-0.5 * k_xX.sum(axis=1)).reshape(num_sampled,num_to_sample)
                     #
                     diff = (ps - pt)
                     xk_k_xX = numpy.multiply(diff, k_xX)
                     xk_k_xX_K_C = numpy.dot(xk_k_xX.T,self._K_C)
-                    xk_k_xX_K_C_k_xX = numpy.dot(xk_k_xX_K_C, k_xX).reshape(self.dim-1)
-                    grad_var[i, j, remapping_idx] -= numpy.pi * xk_k_xX_K_C_k_xX
+                    xk_k_xX_K_C_k_xX = numpy.dot(xk_k_xX_K_C, k_xX).reshape(new_dim)
+                    grad_var[i, j, remapping_idx] -=  2.0 *self._get_variance_bij_marginal_gradient() *xk_k_xX_K_C_k_xX #why does it work only without l^2
                     grad_var[i,j,self.idx] = 0.0
         return grad_var
 
-    def _grad_var(self, point_one, point_two, l, idx):
-        diff_points = point_two - point_one
-        diff_points[idx] = 0.0
-        norm = 2.0 * numpy.sqrt(numpy.pi/2.0) /l
-        norm2 = numpy.sqrt(2.0) * l
-        norm3 = numpy.sqrt(2.0/numpy.pi) *l
-        norm4 = 2.0 * numpy.power(l,2)
-        diff_bounds = self.high - self.low
-        return diff_points * norm  * (diff_bounds * erf(diff_bounds/norm2) + norm3 * (numpy.exp(-(numpy.power(diff_bounds,2))/norm4) - 1.0))
 
     def compute_grad_variance_of_points(self, points_to_sample, num_derivatives=-1):
         r"""Compute the gradient of the variance (matrix) of this GP at each point of ``Xs`` (``points_to_sample``) wrt ``Xs``.
@@ -644,3 +737,19 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         variance = self.compute_variance_of_points(point)[0, 0]
 
         return mean + numpy.sqrt(variance) * numpy.random.normal() + numpy.sqrt(noise_variance) * numpy.random.normal()
+
+    def _build_marginal_matrix_mean_gradient(self):
+        points_sampled = self._points_sampled
+        hyperparameters = self._covariance.get_hyperparameters()
+        shifted_idx = [i +1 for i in self.idx]
+        hyperparameters_new = hyperparameters[shifted_idx]
+        norm = numpy.sqrt(numpy.pi/2.0)
+        norms = numpy.sqrt(2.0) * hyperparameters_new
+        diffs_low = (self.low - points_sampled[:,self.idx]) /norms
+        diffs_high = (self.high - points_sampled[:,self.idx])/norms
+        diffs_low = erf(diffs_low)
+        diffs_high = erf(diffs_high)
+        diffs = diffs_high - diffs_low
+        diffs = diffs /hyperparameters_new * norm
+        return numpy.prod(diffs, axis=1)
+

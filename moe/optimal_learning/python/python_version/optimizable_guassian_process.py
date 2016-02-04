@@ -48,11 +48,11 @@ class OptimizableGaussianProcess( OptimizableInterface):
     current_point = property(get_current_point, set_current_point)
 
     def compute_objective_function(self):
-        return -1*self._gaussian_process.compute_mean_of_points(self._current_point.reshape(1,2))
+        return -1*self._gaussian_process.compute_mean_of_points(self._current_point.reshape(1,self.dim()))
 
     def compute_grad_objective_function(self):
 
-        return -1*self._gaussian_process.compute_grad_mean_of_points(self._current_point.reshape(1,2))
+        return -1*self._gaussian_process.compute_grad_mean_of_points(self._current_point.reshape(1,self.dim()))
 
     def compute_hessian_objective_function(self, **kwargs):
         """We do not currently support computation of the (spatial) hessian of Expected Improvement."""
