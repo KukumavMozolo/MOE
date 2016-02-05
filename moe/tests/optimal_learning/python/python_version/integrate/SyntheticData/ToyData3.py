@@ -8,7 +8,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 
 def get_4dfunction(x,y):
-    res = np.exp(-0.5 *(x*x + y*y))
+    res = 2*np.exp(-0.5 *(x*x + y*y))
     return res
 
 

@@ -77,30 +77,30 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         low = 3.0
         self.noiselvl = 0.3
         print('Multiple Diemsion Integration Test')
-        theta_0 = self.get_fixed_hyperparams(low, high, low, high)
+        theta_0 = [ 0.2, 1.54859412,  1.54859412,  1.54859412]#self.get_fixed_hyperparams(low, high, low, high)
         print(theta_0)
-        for dsimgma in [0.0]:
+        for dsigma in [0.0, 0.5, 1.0, 1.5, 2.0]:
             numpy.random.seed(numpy.random.randint(1,9999))
             print("Here")
             #number of ego iterations
-            iterations = 200
-            nr_threads = 1
-            runs = 1
+            iterations = 150
+            nr_threads = 8
+            runs = 500
             pre_samples = 1
             theta = numpy.copy(theta_0)
-            plot = True
-            #pool = Pool(nr_threads)
+            plot = False
+            pool = Pool(nr_threads)
             self.results = list()
 
-            # [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta, dsimgma, pre_samples, plot), callback=self.collect_results) for x in range(runs)]
-            # pool.close()
-            # pool.join()
-            args = self.get_args(1, iterations, theta, dsimgma, pre_samples, plot)
-            self.results = self.time_stationary_ego(*args)
+            [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta, dsigma, pre_samples, plot), callback=self.collect_results) for x in range(runs)]
+            pool.close()
+            pool.join()
+            # args = self.get_args(1, iterations, theta, dsimgma, pre_samples, plot)
+            # self.results = self.time_stationary_ego(*args)
             res = numpy.asarray(self.results)
             print(res)
             home = expanduser("~")
-            location = home + '/Documents/Thesis/results/results_sigma_' +str(dsimgma) + '_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations)
+            location = home + '/Documents/Thesis/results/results_multi_dsigma_' +str(dsigma) + '_runs_'+str(runs)+ '_pre_'+str(pre_samples) + '_iters_'+str(iterations)
             numpy.save(location, res)
             print('Results where saved to: ' + location)
             #print(res)
@@ -177,7 +177,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         low = params[1]
         high = params[2]
         # theta = self.fit_hyperparameters(data)
-        theta[2] += sigma_2
+        theta[idx] += sigma_2
         print(theta)
         cov = SquareExponential(theta)
         print(data)
@@ -280,7 +280,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             max_relative_change,
             tolerance,
         )
-        domain = TensorProductDomain([ClosedInterval(0.1, 6.0), ClosedInterval(0.1, 2.2), ClosedInterval(0.1, 2.2), ClosedInterval(0.1, 2.2)])
+        domain = TensorProductDomain([ClosedInterval(0.2, 10.0), ClosedInterval(0.2, 10.2), ClosedInterval(0.2, 10.2), ClosedInterval(0.2, 10.2)])
         hyperOptimizer = GradientDescentOptimizer(domain, lml, gd_parameters)
         best_hyperparameters = multistart_hyperparameter_optimization(hyperOptimizer, 1)
         return best_hyperparameters
@@ -291,7 +291,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
     def get_4dfunction(self, point):
         if isinstance(point, list):
             point = numpy.asarray(point)
-        res = numpy.exp(-0.5*numpy.dot(point,numpy.transpose(point))) + numpy.random.normal(0, self.noiselvl)  -0.170226193759
+        res = 2*numpy.exp(-0.5*numpy.dot(point,numpy.transpose(point))) + numpy.random.normal(0, self.noiselvl)  -0.30226193759
         return res
     def get_ctrsinshift(self, alpha, time):
         '''
@@ -334,7 +334,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             x = numpy.random.uniform(low1, high1)
             y = numpy.random.uniform(low2, high2)
             z = numpy.random.uniform(low2, high2)
-            points.append(SamplePoint(numpy.array([x, y,z]), self.function_to_minimize([x, y,z]), self.noiselvl))
+            points.append(SamplePoint(numpy.array([x, y, z]), self.function_to_minimize([x, y, z]), self.noiselvl))
         return points
 
     def multistart_expected_improvement_optimization(self,
