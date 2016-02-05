@@ -21,6 +21,40 @@ class GpNextPointsIepi(GpNextPointsPrettyView):
     _route_name = GP_NEXT_POINTS_IEPI_ROUTE_NAME
     _pretty_route_name = GP_NEXT_POINTS_IEPI_PRETTY_ROUTE_NAME
 
+    _pretty_default_request = {"domain_info":
+                                   {"dim": 3,
+                                    "domain_bounds":
+                                        [
+                                            {
+                                                "max": 1.0,
+                                                "min": 0.0},
+                                            {
+                                                "max": 2.0,
+                                                "min": -2.0},
+                                            {
+                                                "max": 2.0,
+                                                "min": -2.0}
+                                        ]
+                                    },
+                               "gp_historical_info":
+                                   {"points_sampled":
+                                        [
+                                            {"value_var": 0.01, "value": 0.1, "point": [0.0, 1.0, 0.5]},
+                                            {"value_var": 0.01, "value": 0.2, "point": [1.0, 1.0, 0.2]},
+                                            {"value_var": 0.01, "value": 0.2, "point": [0.391299679181, 0.5, 1]}
+                                        ]
+                                   },
+                               "num_to_sample": 1,
+                               "gp_integral_info":
+                                   {"marginal_idx": [1,2],
+                                    "lower_bound": [-2,-2],
+                                    "upper_bound": [2,2]
+                                    },
+                               "covariance_info": {
+                                   "covariance_type":"square_exponential",
+                                   "hyperparameters":["0.8474810600969764","2.1667688343515916","2.5984916973124617","2.5984916973124617"]}
+                               }
+
     def _get_default_optimizer_type(self, params):
         """Get the optimizer type associated with this REST endpoint.
 

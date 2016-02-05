@@ -370,13 +370,13 @@ class GpIntegralInfo(StrictMappingSchema):
     :ivar upper_bound: the upper bound on the integrall over the value range of the feature
     """
     marginal_idx = colander.SchemaNode(
-            colander.Int(),
+            colander.List(),
             )
     lower_bound = colander.SchemaNode(
-        colander.Float(),
+        colander.List(),
     )
     upper_bound = colander.SchemaNode(
-        colander.Float(),
+        colander.List(),
     )
     if upper_bound < lower_bound:
         raise colander.Invalid(None, msg='Lower bound not smaller than upper bound')
