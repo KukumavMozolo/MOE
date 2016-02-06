@@ -79,7 +79,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             numpy.random.seed(numpy.random.randint(1,9999))
             print("Here")
             self.noiselvl = 0.3 + dsimgman
-            theta_0 = [0.38017245, 0.218004, 0.26342635]
+            theta_0 = self.get_fixed_hyperparams(low,high) #[0.38017245, 0.218004, 0.26342635]
             #number of ego iterations
             iterations = 150
             nr_threads = 1
@@ -90,11 +90,11 @@ class TestExpectedImprovement(GaussianProcessTestCase):
             self.results = list()
             self.ei = list()
 
-            # [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta_0, dsimgman, pre_samples, plot), callback=self.collect_results) for x in range(runs)]
-            # pool.close()
-            # pool.join()
-            args = self.get_args(1, iterations, theta_0, dsimgman, pre_samples, plot)
-            res, ei = self.time_stationary_ego(*args)
+            [pool.apply_async(self.time_stationary_ego,args=self.get_args(x, iterations, theta_0, dsimgman, pre_samples, plot), callback=self.collect_results) for x in range(runs)]
+            pool.close()
+            pool.join()
+            # args = self.get_args(1, iterations, theta_0, dsimgman, pre_samples, plot)
+            # res, ei = self.time_stationary_ego(*args)
             res = numpy.asarray(self.results)
             ei = numpy.asarray(self.ei)
             home = expanduser("~")
@@ -174,7 +174,7 @@ class TestExpectedImprovement(GaussianProcessTestCase):
         idx = params[0]
         low = params[1]
         high = params[2]
-        theta[2] += sigma_2
+        #theta[2] += sigma_2
         print(theta)
         cov = SquareExponential(theta)
         gaussian_process = IntegratedGaussianProcess(cov, data, *params)
