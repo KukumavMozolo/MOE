@@ -32,7 +32,7 @@ MINIMUM_STD_DEV_GRAD_CHOLESKY = numpy.finfo(numpy.float64).eps
 
 class IntegratedGaussianProcess(GaussianProcessInterface):
 
-    r"""Implementation of a GaussianProcess strictly in Python.
+    r"""Implementation of an "Integrated" GaussianProcess strictly in Python.
 
     .. Note:: Comments in this class are copied from this object's superclass in :mod:`moe.optimal_learning.python.interfaces.gaussian_process_interface`.
 
@@ -42,7 +42,7 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
     cohort and the corresponding function value is the objective measured for that experiment.  There is one noise variance
     value per function value; this is the measurement error and is treated as N(0, noise_variance) Gaussian noise.
 
-    GPPs estimate a real process \ms f(x) = GP(m(x), k(x,x'))\me (see file docs).  This class deals with building an estimator
+    GPPs estimate a real process \ms \int_a^b f(x,t) dt= \int_a^b GP(m(x), k(x,x')) dt \me (see file docs).  This class deals with building an estimator
     to the actual process using measurements taken from the actual process--the (sample point, function val, noise) triple.
     Then predictions about unknown points can be made by sampling from the GPP--in particular, finding the (predicted)
     mean and variance.  These functions (and their gradients) are provided in ComputeMeanOfPoints, ComputeVarianceOfPoints,
@@ -50,8 +50,8 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
 
     Further mathematical details are given in the implementation comments, but we are essentially computing:
 
-    | ComputeMeanOfPoints    : ``K(Xs, X) * [K(X,X) + \sigma_n^2 I]^{-1} * y = Ks^T * K^{-1} * y``
-    | ComputeVarianceOfPoints: ``K(Xs, Xs) - K(Xs,X) * [K(X,X) + \sigma_n^2 I]^{-1} * K(X,Xs) = Kss - Ks^T * K^{-1} * Ks``
+    | ComputeMeanOfPoints    : ``\int _a ^b K(Xs(t), X) * [K(X,X) + \sigma_n^2 I]^{-1} * y dt``
+    | ComputeVarianceOfPoints: ``\int_a ^b \int_a ^b K(Xs(r), Xs(s)) - K(Xs(r),X) * [K(X,X) + \sigma_n^2 I]^{-1} * K(X,Xs(s))``
 
     This (estimated) mean and variance characterize the predicted distributions of the actual \ms m(x), k(x,x')\me
     functions that underly our GP.
@@ -76,6 +76,11 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         :type covariance_function: :class:`moe.optimal_learning.python.interfaces.covariance_interface.CovarianceInterface` subclass
         :param historical_data: object specifying the already-sampled points, the objective value at those points, and the noise variance associated with each observation
         :type historical_data: :class:`moe.optimal_learning.python.data_containers.HistoricalData` object
+        :param idx, list of indexes corresponding to the dimensions we want to marginalize
+        :type list
+        :param low,  list of lower bounds for the improper integrals of the marginalised dimension, it is assumed that low[i] corresponds to the lowerbound of dimension idx[i]
+        :type  list
+        :param list of upper bounds for the improper integrals of the marginalised dimension, it is assumed that high[i] corresponds to the upperbound of dimension idx[i]
 
         """
         self._covariance = copy.deepcopy(covariance_function)
@@ -134,6 +139,9 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         return copy.deepcopy(self._historical_data)
 
     def _build_marginal_matrix_mean(self):
+        """ Computes a vector of integralls that arrise when integrating over the mean function of the gp
+        :return:
+        """
 
         def _get_marginal(querry_point_idx, domain_bound_pos, point, covariance):
             _hyperparameters = covariance.get_hyperparameters()
@@ -159,6 +167,11 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         return marginal_mean_mat
 
     def _build_integrated_term_maxtrix(self, covariance, points_sampled):
+        """ Computes Matrix of terms that arrise when computing the integrall over the covariance matrix
+        :param covariance:
+        :param points_sampled:
+        :return:
+        """
         _hyperparameters = covariance.get_hyperparameters()
         n = points_sampled.shape[0]
         c = numpy.ones(shape=(n,n))
@@ -232,6 +245,10 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         return mu_star * self._get_average()
 
     def best_so_far_at_t(self, t):
+        """Computes the best sampled point as the best point at time t
+        :param t: fload
+        :return: y
+        """
         best_so_far = self._best_so_far_at_t(t)
         if best_so_far != None:
             return best_so_far
@@ -258,20 +275,11 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
                 best_at_t = numpy.amin(self._historical_data.points_sampled_value[points_at_t_idx])
         return best_at_t
 
-
-    # def best_average_over(self, T):
-    #     best_at_t = 0.0
-    #     count = 0
-    #     for t in T:
-    #         points_at_t_idx =  numpy.where(self._historical_data.points_sampled[:,self.idx[0]] ==t)
-    #         if points_at_t_idx[0].size >0:
-    #             best_at_t += numpy.amin(self._historical_data.points_sampled_value[points_at_t_idx])
-    #             count += 1
-    #     if count == 0:
-    #         return numpy.amin(self._historical_data.points_sampled_value)#best_at_t
-        return best_at_t / float(count)
-
     def best_average_over(self, T):
+        """Computes the best point as the best over all time points T
+        :param T: list
+        :return: y
+        """
         def cartesian(arrays, out=None):
             """
             Generate a cartesian product of input arrays.
@@ -288,22 +296,6 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
             out : ndarray
                 2-D array of shape (M, len(arrays)) containing cartesian products
                 formed of input arrays.
-
-            Examples
-            --------
-            >>> cartesian(([1, 2, 3], [4, 5], [6, 7]))
-            array([[1, 4, 6],
-                   [1, 4, 7],
-                   [1, 5, 6],
-                   [1, 5, 7],
-                   [2, 4, 6],
-                   [2, 4, 7],
-                   [2, 5, 6],
-                   [2, 5, 7],
-                   [3, 4, 6],
-                   [3, 4, 7],
-                   [3, 5, 6],
-                   [3, 5, 7]])
 
             """
 
@@ -327,7 +319,6 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
             perms = perms[0]
         best_average = 0.0
         count = 0
-
         for t in perms:
             best_at_t = self._best_so_far_at_t(t)
             if best_at_t != None:
@@ -339,7 +330,9 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
 
 
     def _compute_grad_mean_of_points(self, points_to_sample, num_derivatives=-1):
-        r"""Compute the gradient of the mean of this GP at each of point of ``Xs`` (``points_to_sample``) wrt ``Xs``.
+        r"""Compute the gradient of the integrated mean of this GP at each of point of ``Xs`` (``points_to_sample``) wrt ``Xs``.
+
+        Does not support p-q, just one point at the time
 
         .. Warning:: ``points_to_sample`` should not contain duplicate points.
 
@@ -365,9 +358,9 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
             r"""gradient = cov(x_{*i}^',x_j^')*\frac{1}{L} * ( x_j - x_*) * \sqrt(pi/2) * (erf(\frac{b-x_{jn}}{\sqrt(2)L}) - erf(\frac{a-x_{jn}}{\sqrt(2)L}))
             for i < n and for i = t: gradient = 0
             """
-            idx_shited = [i +1 for i in self.idx]
+            idx_shifted = [i +1 for i in self.idx]
             _hyperparameters = self._covariance.get_hyperparameters()
-            covariance = SquareExponential(numpy.delete(_hyperparameters, idx_shited, 0))
+            covariance = SquareExponential(numpy.delete(_hyperparameters, idx_shifted, 0))
             grad_cov = point_two - point_one
             tmp_point_two = numpy.delete(point_two, self.idx, 0)
             tmp_point_one = numpy.delete(point_one, self.idx, 0)
@@ -388,9 +381,15 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
 
 
     def _build_integrated_covariance_maxtrix_mean(self, covariance, points_sampled, points_to_sample):
-        idx_shited = [i +1 for i in self.idx]
+        """Computes K_star for integrated mean
+        :param covariance:
+        :param points_sampled:
+        :param points_to_sample:
+        :return:
+        """
+        idx_shifted = [i +1 for i in self.idx]
         hyperparameters = covariance.get_hyperparameters()
-        covariance = SquareExponential(numpy.delete(hyperparameters, idx_shited, 0))
+        covariance = SquareExponential(numpy.delete(hyperparameters, idx_shifted, 0))
         cov_mat = numpy.empty((points_sampled.shape[0], points_to_sample.shape[0]), order='F')
         for j, point_two in enumerate(points_to_sample):
             for i, point_one in enumerate(points_sampled):
@@ -401,6 +400,12 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         return cov_mat
 
     def _build_integrated_covariance_maxtrix_variance(self, covariance, points_sampled, points_to_sample):
+        """Computes K_star for integrated var
+        :param covariance:
+        :param points_sampled:
+        :param points_to_sample:
+        :return:
+        """
         _hyperparameters = covariance.get_hyperparameters()
         idx_shifted = [i +1 for i in self.idx]
         covariance = SquareExponential(numpy.delete(_hyperparameters, idx_shifted, 0))
@@ -413,6 +418,10 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         return cov_mat
 
     def _get_variance_aij_marginal(self):
+        """Computes the outocorrelation part of covariance
+
+        :return:
+        """
         _hyperparameters = self._covariance.get_hyperparameters()
         marginal = 1.0
         for pos, idx in enumerate(self.idx):
@@ -427,6 +436,9 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
 
 
     def _get_variance_bij_marginal(self):
+        """Computes normalisation term that arrises in gradient of integral of data correlation part of the covariance
+        :return:
+        """
         _hyperparameters = self._covariance.get_hyperparameters()
         marginal = 1.0
         for pos, idx in enumerate(self.idx):
@@ -437,20 +449,17 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         return marginal * pi_power
 
     def _get_variance_bij_marginal_gradient(self):
-        _hyperparameters = self._covariance.get_hyperparameters()
+        """constant term that arrises in gradient of integral over data correlation part of variance
+        :return:
+        """
         n = len(self.idx)
         pi_power = numpy.power(numpy.pi, n) / numpy.power(2,n)
         return  pi_power
 
     def _compute_variance_of_points(self, points_to_sample):
-        r"""Compute the variance (matrix) of this GP at each point of ``Xs`` (``points_to_sample``).
+        r"""Compute the variance of this Integrated GP at each point of ``Xs`` (``points_to_sample``).
 
-        .. Warning:: ``points_to_sample`` should not contain duplicate points.
-
-        The variance matrix is symmetric although we currently return the full representation.
-
-        .. Note:: Comments are copied from
-          :mod:`moe.optimal_learning.python.interfaces.gaussian_process_interface.GaussianProcessInterface.compute_variance_of_points`
+        .. Warning:: ``points_to_sample`` should be just one point atm.
 
         :param points_to_sample: num_to_sample points (in dim dimensions) being sampled from the GP
         :type points_to_sample: array of float64 with shape (num_to_sample, dim)
@@ -458,8 +467,6 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         :rtype: array of float64 with shape (num_to_sample, num_to_sample)
 
         """
-
-
 
         _hyperparameters = self._covariance.get_hyperparameters()
         del_idx = [idx +1 for idx in self.idx]
@@ -496,9 +503,9 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         return self.__compute_grad_variance_of_points_per_point(points_to_sample, var_of_grad)
 
     def compute_cholesky_variance_of_points(self, points_to_sample):
-        r"""Compute the cholesky factorization of the variance (matrix) of this GP at each point of ``Xs`` (``points_to_sample``).
+        r"""Compute the variance (matrix) of this integrated GP at each point of ``Xs`` (``points_to_sample``).
 
-        .. Warning:: ``points_to_sample`` should not contain duplicate points.
+        .. Warning:: ``points_to_sample`` should contain just one point atm.
 
         :param points_to_sample: num_to_sample points (in dim dimensions) being sampled from the GP
         :type points_to_sample: array of float64 with shape (num_to_sample, dim)
@@ -550,8 +557,9 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
                     xk_k_xX = numpy.multiply(diff, k_xX)
                     xk_k_xX_K_C = numpy.dot(xk_k_xX.T,self._K_C)
                     xk_k_xX_K_C_k_xX = numpy.dot(xk_k_xX_K_C, k_xX).reshape(new_dim)
-                    grad_var[i, j, remapping_idx] -=  2.0 *self._get_variance_bij_marginal_gradient() *xk_k_xX_K_C_k_xX #why does it work only without l^2
+                    grad_var[i, j, remapping_idx] -=  2.0 *self._get_variance_bij_marginal_gradient() *xk_k_xX_K_C_k_xX
                     grad_var[i,j,self.idx] = 0.0
+                else: raise NotImplementedError('Currently p-q EI is not supported for integrated gp.')
         return grad_var
 
 
@@ -711,6 +719,9 @@ class IntegratedGaussianProcess(GaussianProcessInterface):
         return mean + numpy.sqrt(variance) * numpy.random.normal() + numpy.sqrt(noise_variance) * numpy.random.normal()
 
     def _build_marginal_matrix_mean_gradient(self):
+        """ Computes a matrix that arises when computing the gradient of the integral over the mean of the gp
+        :return:
+        """
         points_sampled = self._points_sampled
         hyperparameters = self._covariance.get_hyperparameters()
         shifted_idx = [i +1 for i in self.idx]
